@@ -139,12 +139,12 @@ function renderInicio() {
         <h1>🎬 Bienvenido a STREAMFLIX</h1>
         <p>La plataforma de streaming de películas y series más grande del mundo</p>
         
-        <div style="background: rgba(255,255,255,0.9); padding: 1.5rem; border-radius: 8px; margin: 2rem 0; text-align: left; max-width: 500px;">
-          <h3 style="color: #667eea; margin-bottom: 1rem;">🚀 Usuario de Prueba</h3>
-          <p><strong>Email:</strong> demo@example.com</p>
-          <p><strong>Contraseña:</strong> demo123</p>
-          <p style="font-size: 0.9rem; color: #666; margin-top: 0.5rem;">Este usuario ya tiene algunas películas favoritas para que puedas probar la funcionalidad.</p>
-        </div>
+        <!-- <div style="background: rgba(255,255,255,0.9); padding: 1.5rem; border-radius: 8px; margin: 2rem 0; text-align: left; max-width: 500px;"> -->
+          <!-- <h3 style="color: #667eea; margin-bottom: 1rem;">🚀 Usuario de Prueba</h3> -->
+          <!-- <p><strong>Email:</strong> demo@example.com</p> -->
+          <!-- <p><strong>Contraseña:</strong> demo123</p> -->
+          <!-- <p style="font-size: 0.9rem; color: #666; margin-top: 0.5rem;">Este usuario ya tiene algunas películas favoritas para que puedas probar la funcionalidad.</p> -->
+        <!-- </div> -->
         
         <div class="button-group">
           <button class="btn btn-primary" onclick="navigateTo('${routes.login}')">Iniciar Sesión</button>

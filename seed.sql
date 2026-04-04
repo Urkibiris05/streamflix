@@ -2,7 +2,11 @@
 
 -- Usuario demo
 INSERT OR IGNORE INTO user (username, email, password_hash, role) VALUES
-('demo', 'demo@example.com', '$2b$12$IOWaGAooEVVOg5IjCTOIAexFY227N2fY30KVDq8sWKGPNHwcrspO.', 'user');
+('demo', 'demo@example.com', '$2b$12$IOWaGAooEVVOg5IjCTOIAexFY227N2fY30KVDq8sWKGPNHwcrspO.', 'user'); -- Contraseña: "demo123"
+
+-- Usuario admin
+INSERT OR IGNORE INTO user (username, email, password_hash, role) VALUES
+('admin', 'admin@example.com', '$2b$12$IOWaGAooEVVOg5IjCTOIAexFY227N2fY30KVDq8sWKGPNHwcrspO.', 'admin'); -- Contraseña: "demo123"
 
 -- Películas
 INSERT OR IGNORE INTO movie (title, description, director, genre, release_date, duration_minutes, rating, poster_url) VALUES
