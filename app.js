@@ -218,14 +218,16 @@ function renderPeliculasGrid(peliculas, containerId = 'peliculas-container') {
   peliculas.forEach(p => {
     const isFav = userFavIds.includes(p.id);
     const card = document.createElement('div');
-    card.className = `pelicula-card ${isFav ? 'card-highlight' : ''}`; // Distintivo visual en la carta
+    card.className = `pelicula-card ${isFav ? 'card-highlight' : ''}`;
+    card.style.cursor = 'pointer';
+    card.onclick = () => mostrarDetalles(p.id);
     
     card.innerHTML = `
-      <img src="${p.poster_url}" alt="${p.title}">
+      <img src="${p.poster_url}" alt="${p.title}" style="cursor: pointer;">
       <div class="card-content">
         <h3>${p.title} ${isFav ? '⭐' : ''}</h3> 
         <div class="card-buttons">
-          <button class="btn ${isFav ? 'btn-active-fav' : 'btn-favorite'}" onclick="toggleFavorito(${p.id})">
+          <button class="btn ${isFav ? 'btn-active-fav' : 'btn-favorite'}" onclick="event.stopPropagation(); toggleFavorito(${p.id})">
             ${isFav ? '❤️ Quitar' : '🤍 Favorito'}
           </button>
         </div>
@@ -503,6 +505,82 @@ function updateFavoriteButton(movieId) {
 }
 
 // ==================== FUNCIONES: UTILIDADES ====================
-function mostrarDetalles(id) {
-  alert(`Detalles de la película ${id} - Funcionalidad en desarrollo`);
+async function mostrarDetalles(id) {
+  try {
+    console.log(`Obteniendo detalles de película ${id}`);
+    const pelicula = await fetchAPI(`${API_URL}/peliculas/${id}`, 'GET');
+    
+    if (!pelicula || pelicula.error) {
+      alert('No se pudieron obtener los detalles de la película');
+      return;
+    }
+
+    const esFavorito = userFavIds.includes(id);
+    const posterUrl = pelicula.poster_url || 'https://via.placeholder.com/300x450?text=No+Image';
+    
+    const detailsHTML = `
+      <div class="movie-detail">
+        <div class="movie-poster">
+          <img src="${posterUrl}" alt="${pelicula.title}" onerror="this.src='https://via.placeholder.com/300x450?text=No+Image'">
+        </div>
+        <div class="movie-info">
+          <h2>${pelicula.title}</h2>
+          
+          <div class="movie-meta">
+            <div class="meta-item">
+              <span class="meta-label">Calificación</span>
+              <span class="meta-value rating-large">⭐ ${pelicula.rating || 'N/A'}/10</span>
+            </div>
+            <div class="meta-item">
+              <span class="meta-label">Género</span>
+              <span class="meta-value">${pelicula.genre || 'No especificado'}</span>
+            </div>
+            <div class="meta-item">
+              <span class="meta-label">Duración</span>
+              <span class="meta-value">${pelicula.duration_minutes ? pelicula.duration_minutes + ' min' : 'No especificada'}</span>
+            </div>
+            <div class="meta-item">
+              <span class="meta-label">Director</span>
+              <span class="meta-value">${pelicula.director || 'No especificado'}</span>
+            </div>
+            <div class="meta-item">
+              <span class="meta-label">Año de Lanzamiento</span>
+              <span class="meta-value">${pelicula.release_date ? pelicula.release_date.slice(0, 4) : 'No especificado'}</span>
+            </div>
+          </div>
+
+          <h3 style="color: #667eea; margin-top: 1.5rem; margin-bottom: 0.8rem;">Sinopsis</h3>
+          <div class="movie-description">
+            ${pelicula.description || 'No hay descripción disponible'}
+          </div>
+
+          <div class="movie-controls">
+            <button class="btn btn-primary" onclick="cerrarDetalles()">Cerrar</button>
+            <button class="btn ${esFavorito ? 'btn-danger' : 'btn-favorite'}" onclick="toggleFavorito(${pelicula.id})">
+              ${esFavorito ? '❌ Eliminar de Favoritos' : '❤️ Agregar a Favoritos'}
+            </button>
+          </div>
+        </div>
+      </div>
+    `;
+
+    document.getElementById('movieDetails').innerHTML = detailsHTML;
+    document.getElementById('movieModal').classList.add('active');
+  } catch (error) {
+    console.error('Error al obtener detalles:', error);
+    alert('Error al cargar los detalles de la película');
+  }
 }
+
+function cerrarDetalles() {
+  document.getElementById('movieModal').classList.remove('active');
+  document.getElementById('movieDetails').innerHTML = '';
+}
+
+// Cerrar modal cuando se hace clic fuera del contenido
+document.addEventListener('click', (e) => {
+  const modal = document.getElementById('movieModal');
+  if (e.target === modal) {
+    cerrarDetalles();
+  }
+});

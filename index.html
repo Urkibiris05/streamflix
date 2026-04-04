@@ -400,6 +400,165 @@
             box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
         }
 
+        /* ==================== MODAL DE DETALLES ==================== */
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 2000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.7);
+            animation: fadeIn 0.3s ease;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+            }
+            to {
+                opacity: 1;
+            }
+        }
+
+        .modal.active {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal-content {
+            background: white;
+            border-radius: 12px;
+            max-width: 900px;
+            width: 90%;
+            max-height: 90vh;
+            overflow-y: auto;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+            animation: slideUp 0.3s ease;
+        }
+
+        @keyframes slideUp {
+            from {
+                transform: translateY(50px);
+                opacity: 0;
+            }
+            to {
+                transform: translateY(0);
+                opacity: 1;
+            }
+        }
+
+        .modal-header {
+            position: relative;
+            height: 0;
+        }
+
+        .modal-close {
+            position: absolute;
+            right: 20px;
+            top: 20px;
+            background: rgba(0, 0, 0, 0.6);
+            color: white;
+            border: none;
+            font-size: 28px;
+            cursor: pointer;
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.3s;
+            z-index: 10;
+        }
+
+        .modal-close:hover {
+            background: rgba(0, 0, 0, 0.9);
+        }
+
+        .movie-detail {
+            display: flex;
+            gap: 2rem;
+            padding: 2rem;
+        }
+
+        .movie-poster {
+            flex-shrink: 0;
+        }
+
+        .movie-poster img {
+            width: 300px;
+            height: auto;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+        }
+
+        .movie-info {
+            flex: 1;
+        }
+
+        .movie-info h2 {
+            font-size: 2.5rem;
+            margin-bottom: 0.5rem;
+            color: #333;
+        }
+
+        .movie-meta {
+            display: flex;
+            gap: 2rem;
+            margin-bottom: 1.5rem;
+            flex-wrap: wrap;
+            font-size: 1rem;
+        }
+
+        .meta-item {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .meta-label {
+            font-size: 0.85rem;
+            color: #888;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .meta-value {
+            font-size: 1.1rem;
+            color: #333;
+            font-weight: 500;
+            margin-top: 0.25rem;
+        }
+
+        .rating-large {
+            font-size: 1.5rem;
+            color: #ff6b6b;
+            font-weight: 700;
+        }
+
+        .movie-description {
+            line-height: 1.8;
+            color: #555;
+            font-size: 1.05rem;
+            margin-bottom: 2rem;
+            text-align: justify;
+        }
+
+        .movie-controls {
+            display: flex;
+            gap: 1rem;
+            flex-wrap: wrap;
+            margin-top: 2rem;
+        }
+
+        .movie-controls .btn {
+            padding: 0.9rem 1.8rem;
+            font-size: 1rem;
+        }
+
         /* ==================== RESPONSIVE ==================== */
         @media (max-width: 768px) {
             .navbar {
@@ -434,6 +593,15 @@
 </head>
 <body>
     <div id="content"></div>
+    
+    <!-- Modal de detalles de película -->
+    <div id="movieModal" class="modal">
+        <div class="modal-content">
+            <button class="modal-close" onclick="cerrarDetalles()">&times;</button>
+            <div id="movieDetails"></div>
+        </div>
+    </div>
+    
     <script src="/app.js"></script>
 </body>
 </html>
