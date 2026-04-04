@@ -5,8 +5,8 @@
 
 // ==================== CONFIG ====================
 const API_URL = 'http://localhost:5000/api';
-let authToken = 'mock_token'; // Token mock para que funcione sin autenticación real
-let currentUser = { id: 1, username: 'usuario_demo', email: 'demo@example.com', role: 'user' };
+let authToken = localStorage.getItem('authToken') || null;
+let currentUser = JSON.parse(localStorage.getItem('currentUser')) || null;
 
 // ==================== RUTAS SPA ====================
 const routes = {
@@ -17,14 +17,26 @@ const routes = {
   admin: 'admin',
   favoritos: 'favoritos'
 };
-
+// Variable global para seguir el rastro de los favoritos en el catálogo
+let userFavIds = [];
 let currentRoute = routes.inicio;
 
 // ==================== INICIALIZACIÓN ====================
 document.addEventListener('DOMContentLoaded', () => {
+  console.log('App initialized');
+  console.log('Stored authToken:', localStorage.getItem('authToken'));
+  console.log('Stored currentUser:', localStorage.getItem('currentUser'));
+
   renderNavigation();
-  // Iniciar directamente en películas (sin login requerido)
-  navigateTo(routes.peliculas);
+
+  // Verificar si hay usuario autenticado, si no, ir a login
+  if (!authToken || !currentUser) {
+    console.log('No authentication found, redirecting to login');
+    navigateTo(routes.login);
+  } else {
+    console.log('User authenticated, redirecting to peliculas');
+    navigateTo(routes.peliculas);
+  }
 });
 
 // ==================== NAVEGACIÓN ====================
@@ -84,19 +96,30 @@ function renderNavigation() {
 
   const logo = document.createElement('div');
   logo.className = 'navbar-logo';
-  logo.textContent = '🎬 STREAMFLIX (DEMO)';
-  logo.onclick = () => navigateTo(routes.peliculas);
+  logo.textContent = '🎬 STREAMFLIX';
+  logo.onclick = () => navigateTo(currentUser ? routes.peliculas : routes.inicio);
   nav.appendChild(logo);
 
   const menu = document.createElement('ul');
   menu.className = 'navbar-menu';
 
-  // Modo demo - navegación simplificada
-  menu.innerHTML = `
-    <li><a href="#" onclick="navigateTo('${routes.peliculas}'); return false;">Películas</a></li>
-    <li><a href="#" onclick="navigateTo('${routes.favoritos}'); return false;">❤️ Favoritos</a></li>
-    <li><span class="user-info">👤 Modo Demo</span></li>
-  `;
+  if (currentUser) {
+    // Usuario autenticado
+    menu.innerHTML = `
+      <li><a href="#" onclick="navigateTo('${routes.peliculas}'); return false;">Películas</a></li>
+      <li><a href="#" onclick="navigateTo('${routes.favoritos}'); return false;">❤️ Favoritos</a></li>
+      ${currentUser.role === 'admin' ? `<li><a href="#" onclick="navigateTo('${routes.admin}'); return false;">⚙️ Admin</a></li>` : ''}
+      <li><span class="user-info">👤 ${currentUser.username}</span></li>
+      <li><a href="#" onclick="logout(); return false;">🚪 Salir</a></li>
+    `;
+  } else {
+    // Usuario no autenticado
+    menu.innerHTML = `
+      <li><a href="#" onclick="navigateTo('${routes.inicio}'); return false;">Inicio</a></li>
+      <li><a href="#" onclick="navigateTo('${routes.login}'); return false;">Iniciar Sesión</a></li>
+      <li><a href="#" onclick="navigateTo('${routes.registro}'); return false;">Registrarse</a></li>
+    `;
+  }
 
   nav.appendChild(menu);
 
@@ -115,6 +138,14 @@ function renderInicio() {
       <div class="welcome-section">
         <h1>🎬 Bienvenido a STREAMFLIX</h1>
         <p>La plataforma de streaming de películas y series más grande del mundo</p>
+        
+        <div style="background: rgba(255,255,255,0.9); padding: 1.5rem; border-radius: 8px; margin: 2rem 0; text-align: left; max-width: 500px;">
+          <h3 style="color: #667eea; margin-bottom: 1rem;">🚀 Usuario de Prueba</h3>
+          <p><strong>Email:</strong> demo@example.com</p>
+          <p><strong>Contraseña:</strong> demo123</p>
+          <p style="font-size: 0.9rem; color: #666; margin-top: 0.5rem;">Este usuario ya tiene algunas películas favoritas para que puedas probar la funcionalidad.</p>
+        </div>
+        
         <div class="button-group">
           <button class="btn btn-primary" onclick="navigateTo('${routes.login}')">Iniciar Sesión</button>
           <button class="btn btn-secondary" onclick="navigateTo('${routes.registro}')">Crear Cuenta</button>
@@ -165,41 +196,38 @@ function renderRegistro() {
 // ==================== RENDERIZACIÓN: PELÍCULAS ====================
 async function renderPeliculas() {
   const content = document.getElementById('content');
-  content.innerHTML = `
-    <div class="container">
-      <h2>Nuestro Catálogo</h2>
-      <div class="search-bar">
-        <input type="text" id="busqueda" placeholder="Buscar película por título..." />
-      </div>
-      <div id="peliculas-container" class="peliculas-grid"></div>
-    </div>
-  `;
+  content.innerHTML = `<div class="container"><h2>Nuestro Catálogo</h2><div id="peliculas-container" class="peliculas-grid"></div></div>`;
 
-  // Cargar películas
+  // 1. Obtener favoritos primero para saber qué marcar
+  const favoritos = await fetchAPI(`${API_URL}/favoritos`, 'GET', null, authToken);
+  userFavIds = favoritos ? favoritos.map(f => f.id) : [];
+
+  // 2. Obtener todas las películas
   const peliculas = await fetchAPI(`${API_URL}/peliculas`, 'GET');
+  
   if (peliculas) {
-    renderPeliculasGrid(peliculas);
-    setupBusqueda(peliculas);
+    renderPeliculasGrid(peliculas); 
   }
 }
 
-function renderPeliculasGrid(peliculas) {
-  const container = document.getElementById('peliculas-container');
+function renderPeliculasGrid(peliculas, containerId = 'peliculas-container') {
+  const container = document.getElementById(containerId);
+  if (!container) return;
   container.innerHTML = '';
 
-  peliculas.forEach(pelicula => {
+  peliculas.forEach(p => {
+    const isFav = userFavIds.includes(p.id);
     const card = document.createElement('div');
-    card.className = 'pelicula-card';
+    card.className = `pelicula-card ${isFav ? 'card-highlight' : ''}`; // Distintivo visual en la carta
+    
     card.innerHTML = `
-      <img src="${pelicula.poster_url || 'https://via.placeholder.com/200x300?text=No+Image'}" alt="${pelicula.title}">
+      <img src="${p.poster_url}" alt="${p.title}">
       <div class="card-content">
-        <h3>${pelicula.title}</h3>
-        <p class="genre">${pelicula.genre || 'N/A'}</p>
-        <p class="rating">⭐ ${pelicula.rating || 'N/A'}</p>
-        <p class="description">${pelicula.description?.substring(0, 80) || ''}...</p>
+        <h3>${p.title} ${isFav ? '⭐' : ''}</h3> 
         <div class="card-buttons">
-          <button class="btn btn-small" onclick="mostrarDetalles(${pelicula.id})">Ver Detalles</button>
-          <button class="btn btn-small btn-favorite" onclick="toggleFavorito(${pelicula.id})">❤️ Favorito</button>
+          <button class="btn ${isFav ? 'btn-active-fav' : 'btn-favorite'}" onclick="toggleFavorito(${p.id})">
+            ${isFav ? '❤️ Quitar' : '🤍 Favorito'}
+          </button>
         </div>
       </div>
     `;
@@ -281,16 +309,16 @@ async function switchTab(tab) {
 // ==================== RENDERIZACIÓN: FAVORITOS ====================
 async function renderFavoritos() {
   const content = document.getElementById('content');
-  content.innerHTML = `
-    <div class="container">
-      <h2>❤️ Mis Películas Favoritas</h2>
-      <div id="favoritos-container" class="peliculas-grid"></div>
-    </div>
-  `;
+  content.innerHTML = `<div class="container"><h2>❤️ Mis Favoritos</h2><div id="favoritos-container" class="peliculas-grid"></div></div>`;
 
   const favoritos = await fetchAPI(`${API_URL}/favoritos`, 'GET', null, authToken);
-  if (favoritos) {
-    renderPeliculasGrid(favoritos);
+  
+  // Forzamos que use el contenedor de favoritos
+  if (favoritos && favoritos.length > 0) {
+    userFavIds = favoritos.map(f => f.id);
+    renderPeliculasGrid(favoritos, 'favoritos-container');
+  } else {
+    document.getElementById('favoritos-container').innerHTML = "<p>No tienes favoritos.</p>";
   }
 }
 
@@ -304,26 +332,42 @@ async function fetchAPI(url, method = 'GET', body = null, token = null) {
       }
     };
 
-    // No enviar token por ahora (versión simplificada)
-    // if (token) {
-    //   options.headers['Authorization'] = `Bearer ${token}`;
-    // }
+    // Usar token si está disponible
+    if (token || authToken) {
+      options.headers['Authorization'] = `Bearer ${token || authToken}`;
+    }
 
     if (body) {
       options.body = JSON.stringify(body);
     }
 
+    console.log('Making API call to:', url, 'with method:', method);
     const response = await fetch(url, options);
+    console.log('Response status:', response.status);
 
     if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.error || `Error: ${response.status}`);
+      let errorMessage = `Error: ${response.status}`;
+      try {
+        const error = await response.json();
+        if (error && error.error) {
+          errorMessage = error.error;
+        }
+      } catch (jsonError) {
+        console.warn('No se pudo leer JSON de error', jsonError);
+      }
+      alert(errorMessage);
+      if (response.status === 401) {
+        logout();
+      }
+      return null;
     }
 
-    return await response.json();
+    const data = await response.json();
+    console.log('Response data:', data);
+    return data;
   } catch (error) {
     console.error('API Error:', error);
-    alert(`Error: ${error.message}`);
+    alert('Error al conectar con el servidor. Intenta de nuevo.');
     return null;
   }
 }
@@ -338,7 +382,15 @@ async function handleLogin(event) {
   const response = await fetchAPI(`${API_URL}/login`, 'POST', { email, password });
 
   if (response) {
-    alert('Login exitoso (modo demo)');
+    // Guardar token e información del usuario
+    authToken = response.token;
+    currentUser = response.usuario;
+
+    // Guardar en localStorage
+    localStorage.setItem('authToken', authToken);
+    localStorage.setItem('currentUser', JSON.stringify(currentUser));
+
+    renderNavigation(); // Actualizar navegación
     navigateTo(routes.peliculas);
   }
 }
@@ -359,13 +411,20 @@ async function handleRegistro(event) {
   const response = await fetchAPI(`${API_URL}/registro`, 'POST', { username, email, password });
 
   if (response) {
-    alert('Registro exitoso (modo demo)');
     navigateTo(routes.login);
   }
 }
 
 function logout() {
-  alert('Logout (modo demo)');
+  // Limpiar datos de sesión
+  authToken = null;
+  currentUser = null;
+
+  // Limpiar localStorage
+  localStorage.removeItem('authToken');
+  localStorage.removeItem('currentUser');
+
+  renderNavigation(); // Actualizar navegación
   navigateTo(routes.inicio);
 }
 
@@ -387,7 +446,6 @@ async function crearPelicula(event) {
   const response = await fetchAPI(`${API_URL}/peliculas`, 'POST', pelicula, authToken);
   
   if (response) {
-    alert('Película creada exitosamente');
     switchTab('lista');
   }
 }
@@ -402,7 +460,6 @@ async function eliminarPelicula(id) {
   const response = await fetchAPI(`${API_URL}/peliculas/${id}`, 'DELETE', null, authToken);
   
   if (response) {
-    alert('Película eliminada');
     switchTab('lista');
   }
 }
@@ -410,7 +467,7 @@ async function eliminarPelicula(id) {
 // ==================== FUNCIONES: FAVORITOS ====================
 async function toggleFavorito(movieId) {
   if (!authToken) {
-    alert('Debes iniciar sesión para agregar favoritos');
+    alert('Necesitas iniciar sesión para agregar favoritos.');
     navigateTo(routes.login);
     return;
   }
@@ -418,20 +475,34 @@ async function toggleFavorito(movieId) {
   const response = await fetchAPI(`${API_URL}/favoritos`, 'POST', { movie_id: movieId }, authToken);
   
   if (response) {
-    alert('Agregado a favoritos');
+    const mensaje = response.mensaje || 'Película añadida a favoritos.';
+    alert(mensaje);
+
+    // Si estamos en la página de favoritos, actualizar la vista
+    if (currentRoute === routes.favoritos) {
+      renderFavoritos();
+    }
+
+    // Actualizar el botón visualmente
+    updateFavoriteButton(movieId);
   }
+}
+
+function updateFavoriteButton(movieId) {
+  const buttons = document.querySelectorAll(`button[onclick*="toggleFavorito(${movieId})"]`);
+  buttons.forEach(button => {
+    button.textContent = '❤️ Agregado';
+    button.disabled = true;
+    button.style.opacity = '0.7';
+    setTimeout(() => {
+      button.textContent = '❤️ Favorito';
+      button.disabled = false;
+      button.style.opacity = '1';
+    }, 1500);
+  });
 }
 
 // ==================== FUNCIONES: UTILIDADES ====================
 function mostrarDetalles(id) {
   alert(`Detalles de la película ${id} - Funcionalidad en desarrollo`);
-}
-    contenedor.appendChild(div);
-
-// Función para filtrar películas por título
-function filtrarPeliculas(titulo) {
-  const filtradas = peliculasOriginal.filter(pelicula =>
-    pelicula.titulo.toLowerCase().includes(titulo.toLowerCase())
-  );
-  renderPeliculas(filtradas);
 }
