@@ -3,6 +3,8 @@ from flask import Flask, request, jsonify, send_from_directory, make_response
 from flask_sqlalchemy import SQLAlchemy
 from bcrypt import hashpw, gensalt, checkpw
 from sqlalchemy import text
+from datetime import datetime, timezone
+import time
 
 # ==================== CONFIGURACIÓN ====================
 basedir = os.path.abspath(os.path.dirname(__file__))
@@ -21,8 +23,8 @@ class User(db.Model):
     email = db.Column(db.String(120), unique=True, nullable=False)
     password_hash = db.Column(db.String(255), nullable=False)
     role = db.Column(db.String(20), default='user')
-    created_at = db.Column(db.DateTime, default=db.func.current_timestamp())
-    updated_at = db.Column(db.DateTime, default=db.func.current_timestamp(), onupdate=db.func.current_timestamp())
+    created_at = db.Column(db.DateTime(timezone=True), default=db.func.current_timestamp())
+    updated_at = db.Column(db.DateTime(timezone=True), default=db.func.current_timestamp(), onupdate=db.func.current_timestamp())
     is_active = db.Column(db.Boolean, default=True)
 
     favorites = db.relationship('Favorites', backref='user', lazy=True)
@@ -38,8 +40,8 @@ class Movie(db.Model):
     rating = db.Column(db.Float)
     poster_url = db.Column(db.String(500))
     video_url = db.Column(db.String(500))
-    created_at = db.Column(db.DateTime, default=db.func.current_timestamp())
-    updated_at = db.Column(db.DateTime, default=db.func.current_timestamp(), onupdate=db.func.current_timestamp())
+    created_at = db.Column(db.DateTime(timezone=True), default=db.func.current_timestamp())
+    updated_at = db.Column(db.DateTime(timezone=True), default=db.func.current_timestamp(), onupdate=db.func.current_timestamp())
 
     favorited_by = db.relationship('Favorites', backref='movie', lazy=True)
 
@@ -78,7 +80,7 @@ def init_db():
                     username='demo',
                     email='demo@example.com',
                     password_hash='$2b$12$IOWaGAooEVVOg5IjCTOIAexFY227N2fY30KVDq8sWKGPNHwcrspO.',
-                    role='user'
+                    role='admin'
                 )
                 db.session.add(demo_user)
 
@@ -95,8 +97,11 @@ def init_db():
         # Asegurar que el usuario demo tenga la contraseña esperada
         demo_password_hash = '$2b$12$IOWaGAooEVVOg5IjCTOIAexFY227N2fY30KVDq8sWKGPNHwcrspO.'
         demo_user = User.query.filter_by(email='demo@example.com').first()
-        if demo_user and demo_user.password_hash != demo_password_hash:
-            demo_user.password_hash = demo_password_hash
+        if demo_user:
+            if demo_user.password_hash != demo_password_hash:
+                demo_user.password_hash = demo_password_hash
+            if demo_user.role != 'admin':
+                demo_user.role = 'admin'
             db.session.commit()
 
 # ==================== FUNCIÓN CORS MANUAL ====================
@@ -243,7 +248,9 @@ def obtener_peliculas():
             'duration_minutes': p.duration_minutes,
             'rating': p.rating,
             'poster_url': p.poster_url,
-            'video_url': p.video_url
+            'video_url': p.video_url,
+            'created_at': p.created_at.isoformat() if p.created_at else None,
+            'updated_at': p.updated_at.isoformat() if p.updated_at else None
         } for p in peliculas]), 200
     except Exception as e:
         return jsonify({'error': str(e)}), 500
@@ -263,9 +270,231 @@ def obtener_pelicula(id):
             'duration_minutes': pelicula.duration_minutes,
             'rating': pelicula.rating,
             'poster_url': pelicula.poster_url,
-            'video_url': pelicula.video_url
+            'video_url': pelicula.video_url,
+            'created_at': pelicula.created_at.isoformat() if pelicula.created_at else None,
+            'updated_at': pelicula.updated_at.isoformat() if pelicula.updated_at else None
         }), 200
     except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/peliculas', methods=['POST'])
+@cors_enabled
+def crear_pelicula():
+    try:
+        # Obtener user_id del token y verificar rol admin
+        auth_header = request.headers.get('Authorization')
+        if not auth_header or not auth_header.startswith('Bearer '):
+            return jsonify({'error': 'Token requerido'}), 401
+        
+        token = auth_header.split(' ')[1]
+        try:
+            user_id = int(token.split('_')[1])
+        except:
+            return jsonify({'error': 'Token inválido'}), 401
+
+        usuario = db.session.get(User, user_id)
+        if not usuario or usuario.role != 'admin':
+            return jsonify({'error': 'Acceso denegado. Solo administradores pueden crear películas.'}), 403
+
+        datos = request.get_json()
+        if not datos:
+            return jsonify({'error': 'No se proporcionaron datos'}), 400
+
+        # Validar campos requeridos
+        if not datos.get('title'):
+            return jsonify({'error': 'El título es requerido'}), 400
+
+        # Procesar y validar datos
+        release_date_str = datos.get('release_date')
+        if release_date_str and release_date_str != '':
+            try:
+                release_date = datetime.strptime(release_date_str, '%Y-%m-%d').date()
+            except ValueError:
+                return jsonify({'error': 'Fecha de lanzamiento inválida'}), 400
+        else:
+            release_date = None
+
+        duration_minutes = datos.get('duration_minutes')
+        if duration_minutes == '' or duration_minutes is None:
+            duration_minutes = None
+        else:
+            try:
+                duration_minutes = int(duration_minutes)
+            except (ValueError, TypeError):
+                return jsonify({'error': 'Duración debe ser un número entero'}), 400
+
+        rating = datos.get('rating')
+        if rating == '' or rating is None:
+            rating = None
+        else:
+            try:
+                rating = float(rating)
+            except (ValueError, TypeError):
+                return jsonify({'error': 'Calificación debe ser un número'}), 400
+
+        # Crear película
+        pelicula = Movie(
+            title=datos['title'],
+            description=datos.get('description') or None,
+            director=datos.get('director') or None,
+            genre=datos.get('genre') or None,
+            release_date=release_date,
+            duration_minutes=duration_minutes,
+            rating=rating,
+            poster_url=datos.get('poster_url') or None,
+            video_url=datos.get('video_url') or None,
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc)
+        )
+
+        db.session.add(pelicula)
+        db.session.commit()
+
+        return jsonify({
+            'mensaje': 'Película creada exitosamente',
+            'pelicula': {
+                'id': pelicula.id,
+                'title': pelicula.title,
+                'description': pelicula.description,
+                'director': pelicula.director,
+                'genre': pelicula.genre,
+                'release_date': pelicula.release_date.isoformat() if pelicula.release_date else None,
+                'duration_minutes': pelicula.duration_minutes,
+                'rating': pelicula.rating,
+                'poster_url': pelicula.poster_url,
+                'video_url': pelicula.video_url,
+                'created_at': pelicula.created_at.isoformat() if pelicula.created_at else None,
+                'updated_at': pelicula.updated_at.isoformat() if pelicula.updated_at else None
+            }
+        }), 201
+
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/peliculas/<int:id>', methods=['PUT'])
+@cors_enabled
+def editar_pelicula(id):
+    try:
+        # Obtener user_id del token y verificar rol admin
+        auth_header = request.headers.get('Authorization')
+        if not auth_header or not auth_header.startswith('Bearer '):
+            return jsonify({'error': 'Token requerido'}), 401
+        
+        token = auth_header.split(' ')[1]
+        try:
+            user_id = int(token.split('_')[1])
+        except:
+            return jsonify({'error': 'Token inválido'}), 401
+
+        usuario = db.session.get(User, user_id)
+        if not usuario or usuario.role != 'admin':
+            return jsonify({'error': 'Acceso denegado. Solo administradores pueden editar películas.'}), 403
+
+        pelicula = Movie.query.get_or_404(id)
+        datos = request.get_json()
+        if not datos:
+            return jsonify({'error': 'No se proporcionaron datos'}), 400
+
+        # Actualizar campos
+        if 'title' in datos:
+            pelicula.title = datos['title']
+        if 'description' in datos:
+            pelicula.description = datos['description'] or None
+        if 'director' in datos:
+            pelicula.director = datos['director'] or None
+        if 'genre' in datos:
+            pelicula.genre = datos['genre'] or None
+        if 'release_date' in datos:
+            release_date_str = datos['release_date']
+            if release_date_str and release_date_str != '':
+                try:
+                    pelicula.release_date = datetime.strptime(release_date_str, '%Y-%m-%d').date()
+                except ValueError:
+                    return jsonify({'error': 'Fecha de lanzamiento inválida'}), 400
+            else:
+                pelicula.release_date = None
+        if 'duration_minutes' in datos:
+            duration_minutes = datos['duration_minutes']
+            if duration_minutes == '' or duration_minutes is None:
+                pelicula.duration_minutes = None
+            else:
+                try:
+                    pelicula.duration_minutes = int(duration_minutes)
+                except (ValueError, TypeError):
+                    return jsonify({'error': 'Duración debe ser un número entero'}), 400
+        if 'rating' in datos:
+            rating = datos['rating']
+            if rating == '' or rating is None:
+                pelicula.rating = None
+            else:
+                try:
+                    pelicula.rating = float(rating)
+                except (ValueError, TypeError):
+                    return jsonify({'error': 'Calificación debe ser un número'}), 400
+        if 'poster_url' in datos:
+            pelicula.poster_url = datos['poster_url'] or None
+        if 'video_url' in datos:
+            pelicula.video_url = datos['video_url'] or None
+
+        # Forzar actualización de updated_at
+        pelicula.updated_at = time.time()
+
+        db.session.commit()
+
+        return jsonify({
+            'mensaje': 'Película actualizada exitosamente',
+            'pelicula': {
+                'id': pelicula.id,
+                'title': pelicula.title,
+                'description': pelicula.description,
+                'director': pelicula.director,
+                'genre': pelicula.genre,
+                'release_date': pelicula.release_date.isoformat() if pelicula.release_date else None,
+                'duration_minutes': pelicula.duration_minutes,
+                'rating': pelicula.rating,
+                'poster_url': pelicula.poster_url,
+                'video_url': pelicula.video_url,
+                'created_at': pelicula.created_at.isoformat() if pelicula.created_at else None,
+                'updated_at': pelicula.updated_at.isoformat() if pelicula.updated_at else None
+            }
+        }), 200
+
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/peliculas/<int:id>', methods=['DELETE'])
+@cors_enabled
+def eliminar_pelicula(id):
+    try:
+        # Obtener user_id del token y verificar rol admin
+        auth_header = request.headers.get('Authorization')
+        if not auth_header or not auth_header.startswith('Bearer '):
+            return jsonify({'error': 'Token requerido'}), 401
+        
+        token = auth_header.split(' ')[1]
+        try:
+            user_id = int(token.split('_')[1])
+        except:
+            return jsonify({'error': 'Token inválido'}), 401
+
+        usuario = db.session.get(User, user_id)
+        if not usuario or usuario.role != 'admin':
+            return jsonify({'error': 'Acceso denegado. Solo administradores pueden eliminar películas.'}), 403
+
+        pelicula = Movie.query.get_or_404(id)
+        
+        # Eliminar favoritos asociados primero
+        Favorites.query.filter_by(movie_id=id).delete()
+        
+        db.session.delete(pelicula)
+        db.session.commit()
+
+        return jsonify({'mensaje': 'Película eliminada exitosamente'}), 200
+
+    except Exception as e:
+        db.session.rollback()
         return jsonify({'error': str(e)}), 500
 
 # --- API: FAVORITOS ---
@@ -333,7 +562,7 @@ def agregar_favorito():
         print(f"Intentando agregar favorito: user_id={user_id}, movie_id={movie_id}")
 
         # Verificar que la película existe
-        movie = Movie.query.get(movie_id)
+        movie = db.session.get(Movie, movie_id)
         if not movie:
             print(f"Película con ID {movie_id} no encontrada")
             return jsonify({'error': 'Película no encontrada'}), 404

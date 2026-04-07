@@ -304,6 +304,7 @@ async function switchTab(tab) {
         <input type="text" id="poster_url" placeholder="URL del Poster">
         <button type="submit" class="btn btn-primary">Crear Película</button>
       </form>
+      <div id="create-result" class="create-result"></div>
     `;
   }
 }
@@ -440,16 +441,38 @@ async function crearPelicula(event) {
     director: document.getElementById('director').value,
     genre: document.getElementById('genre').value,
     release_date: document.getElementById('release_date').value,
-    duration_minutes: parseInt(document.getElementById('duration_minutes').value),
-    rating: parseFloat(document.getElementById('rating').value),
+    duration_minutes: document.getElementById('duration_minutes').value,
+    rating: document.getElementById('rating').value,
     poster_url: document.getElementById('poster_url').value
   };
 
   const response = await fetchAPI(`${API_URL}/peliculas`, 'POST', pelicula, authToken);
   
   if (response) {
+    console.log('Película creada:', response.pelicula);
+    const resultDiv = document.getElementById('create-result');
+    if (resultDiv) {
+      resultDiv.innerHTML = mostrarPeliculaCreada(response.pelicula);
+    }
     switchTab('lista');
   }
+}
+
+function mostrarPeliculaCreada(pelicula) {
+  return `
+    <div class="created-movie-card">
+      <h4>Película creada con éxito</h4>
+      <p><strong>ID:</strong> ${pelicula.id}</p>
+      <p><strong>Título:</strong> ${pelicula.title}</p>
+      <p><strong>Género:</strong> ${pelicula.genre || 'N/A'}</p>
+      <p><strong>Fecha de estreno:</strong> ${pelicula.release_date || 'N/A'}</p>
+      <p><strong>Duración:</strong> ${pelicula.duration_minutes ? pelicula.duration_minutes + ' min' : 'N/A'}</p>
+      <p><strong>Rating:</strong> ${pelicula.rating || 'N/A'}/10</p>
+      <p><strong>Poster URL:</strong> ${pelicula.poster_url || 'N/A'}</p>
+      <p><strong>Created at:</strong> ${pelicula.created_at || 'N/A'}</p>
+      <p><strong>Updated at:</strong> ${pelicula.updated_at || 'N/A'}</p>
+    </div>
+  `;
 }
 
 async function editarPelicula(id) {
