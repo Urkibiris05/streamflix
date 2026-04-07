@@ -4,7 +4,6 @@ from flask_sqlalchemy import SQLAlchemy
 from bcrypt import hashpw, gensalt, checkpw
 from sqlalchemy import text
 from datetime import datetime, timezone
-import time
 
 # ==================== CONFIGURACIÓN ====================
 basedir = os.path.abspath(os.path.dirname(__file__))
@@ -259,7 +258,9 @@ def obtener_peliculas():
 @cors_enabled
 def obtener_pelicula(id):
     try:
-        pelicula = Movie.query.get_or_404(id)
+        pelicula = db.session.get(Movie, id)
+        if not pelicula:
+            return jsonify({'error': 'Película no encontrada'}), 404
         return jsonify({
             'id': pelicula.id,
             'title': pelicula.title,
@@ -391,7 +392,9 @@ def editar_pelicula(id):
         if not usuario or usuario.role != 'admin':
             return jsonify({'error': 'Acceso denegado. Solo administradores pueden editar películas.'}), 403
 
-        pelicula = Movie.query.get_or_404(id)
+        pelicula = db.session.get(Movie, id)
+        if not pelicula:
+            return jsonify({'error': 'Película no encontrada'}), 404
         datos = request.get_json()
         if not datos:
             return jsonify({'error': 'No se proporcionaron datos'}), 400
@@ -438,7 +441,7 @@ def editar_pelicula(id):
             pelicula.video_url = datos['video_url'] or None
 
         # Forzar actualización de updated_at
-        pelicula.updated_at = time.time()
+        pelicula.updated_at = datetime.now(timezone.utc)
 
         db.session.commit()
 
@@ -483,7 +486,9 @@ def eliminar_pelicula(id):
         if not usuario or usuario.role != 'admin':
             return jsonify({'error': 'Acceso denegado. Solo administradores pueden eliminar películas.'}), 403
 
-        pelicula = Movie.query.get_or_404(id)
+        pelicula = db.session.get(Movie, id)
+        if not pelicula:
+            return jsonify({'error': 'Película no encontrada'}), 404
         
         # Eliminar favoritos asociados primero
         Favorites.query.filter_by(movie_id=id).delete()

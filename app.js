@@ -302,6 +302,7 @@ async function switchTab(tab) {
         <input type="number" id="duration_minutes" placeholder="Duración (minutos)">
         <input type="number" id="rating" placeholder="Calificación (0-10)" step="0.1">
         <input type="text" id="poster_url" placeholder="URL del Poster">
+        <input type="text" id="video_url" placeholder="URL del Video (opcional)">
         <button type="submit" class="btn btn-primary">Crear Película</button>
       </form>
       <div id="create-result" class="create-result"></div>
@@ -443,7 +444,8 @@ async function crearPelicula(event) {
     release_date: document.getElementById('release_date').value,
     duration_minutes: document.getElementById('duration_minutes').value,
     rating: document.getElementById('rating').value,
-    poster_url: document.getElementById('poster_url').value
+    poster_url: document.getElementById('poster_url').value,
+    video_url: document.getElementById('video_url').value
   };
 
   const response = await fetchAPI(`${API_URL}/peliculas`, 'POST', pelicula, authToken);
@@ -469,6 +471,7 @@ function mostrarPeliculaCreada(pelicula) {
       <p><strong>Duración:</strong> ${pelicula.duration_minutes ? pelicula.duration_minutes + ' min' : 'N/A'}</p>
       <p><strong>Rating:</strong> ${pelicula.rating || 'N/A'}/10</p>
       <p><strong>Poster URL:</strong> ${pelicula.poster_url || 'N/A'}</p>
+      <p><strong>Video URL:</strong> ${pelicula.video_url || 'N/A'}</p>
       <p><strong>Created at:</strong> ${pelicula.created_at || 'N/A'}</p>
       <p><strong>Updated at:</strong> ${pelicula.updated_at || 'N/A'}</p>
     </div>
@@ -476,7 +479,52 @@ function mostrarPeliculaCreada(pelicula) {
 }
 
 async function editarPelicula(id) {
-  alert('Funcionalidad de edición en desarrollo');
+  const pelicula = await fetchAPI(`${API_URL}/peliculas/${id}`, 'GET');
+  if (!pelicula) return;
+
+  const adminContent = document.getElementById('admin-content');
+  adminContent.innerHTML = `
+    <h3>Editar Película</h3>
+    <form onsubmit="actualizarPelicula(event, ${id})" class="admin-form">
+      <input type="text" id="edit-title" placeholder="Título" value="${pelicula.title || ''}" required>
+      <textarea id="edit-description" placeholder="Descripción">${pelicula.description || ''}</textarea>
+      <input type="text" id="edit-director" placeholder="Director" value="${pelicula.director || ''}">
+      <input type="text" id="edit-genre" placeholder="Género" value="${pelicula.genre || ''}">
+      <input type="date" id="edit-release_date" value="${pelicula.release_date || ''}">
+      <input type="number" id="edit-duration_minutes" placeholder="Duración (minutos)" value="${pelicula.duration_minutes || ''}">
+      <input type="number" id="edit-rating" placeholder="Calificación (0-10)" step="0.1" value="${pelicula.rating || ''}">
+      <input type="text" id="edit-poster_url" placeholder="URL del Poster" value="${pelicula.poster_url || ''}">
+      <input type="text" id="edit-video_url" placeholder="URL del Video (opcional)" value="${pelicula.video_url || ''}">
+      <button type="submit" class="btn btn-primary">Guardar Cambios</button>
+      <button type="button" class="btn btn-secondary" onclick="switchTab('lista')">Volver a la lista</button>
+    </form>
+    <div id="edit-result" class="create-result"></div>
+  `;
+}
+
+async function actualizarPelicula(event, id) {
+  event.preventDefault();
+
+  const pelicula = {
+    title: document.getElementById('edit-title').value,
+    description: document.getElementById('edit-description').value,
+    director: document.getElementById('edit-director').value,
+    genre: document.getElementById('edit-genre').value,
+    release_date: document.getElementById('edit-release_date').value,
+    duration_minutes: document.getElementById('edit-duration_minutes').value,
+    rating: document.getElementById('edit-rating').value,
+    poster_url: document.getElementById('edit-poster_url').value,
+    video_url: document.getElementById('edit-video_url').value
+  };
+
+  const response = await fetchAPI(`${API_URL}/peliculas/${id}`, 'PUT', pelicula, authToken);
+  if (response) {
+    const resultDiv = document.getElementById('edit-result');
+    if (resultDiv) {
+      resultDiv.innerHTML = mostrarPeliculaCreada(response.pelicula).replace('Película creada con éxito', 'Película actualizada con éxito');
+    }
+    setTimeout(() => switchTab('lista'), 1200);
+  }
 }
 
 async function eliminarPelicula(id) {
