@@ -21,7 +21,7 @@ Desarrollar una **Single Page Application (SPA)** con arquitectura de tres capas
 | **Frontend SPA** | ✅ Completo | `app.js` + `index.html` (1200+ líneas) |
 | **Backend API REST** | ✅ Completo | `app.py` (500+ líneas, 11 endpoints) |
 | **Base de Datos SQL** | ✅ Completo | `schema.sql` (56 líneas, 3 tablas) |
-| **Persistencia de Datos** | ✅ Completo | MySQL + SQLAlchemy ORM |
+| **Persistencia de Datos** | ✅ Completo | SQLite local + SQLAlchemy ORM |
 
 ### 2️⃣ Funcionalidades Requeridas
 
@@ -245,7 +245,7 @@ FAVORITOS:
 ✅ SQLAlchemy==2.0.48        → Database toolkit
 ✅ bcrypt==5.0.0             → Hash de passwords
 ✅ PyJWT==2.8.1              → JSON Web Tokens
-✅ PyMySQL==1.1.0            → Conector MySQL
+✅ PyMySQL==1.1.0            → No usado en la configuración SQLite por defecto
 ```
 
 ### Frontend (Vanilla JS)
@@ -269,7 +269,7 @@ FAVORITOS:
 | Stack especificado | ✅ | Flask + Vanilla JS |
 | Sistema de Registro | ✅ | /api/registro |
 | Modulo Admin CRUD | ✅ | /api/peliculas |
-| Persistencia de datos | ✅ | MySQL + SQLAlchemy |
+| Persistencia de datos | ✅ | SQLite local + SQLAlchemy |
 
 ---
 
@@ -428,7 +428,7 @@ Para mejorar el proyecto post-entrega:
 ## 📞 RECURSOS
 
 - **Documentación del Proyecto:** `/memories/repo/` 
-- **Stack Tech:** Flask, MySQL, Vanilla JS
+- **Stack Tech:** Flask, SQLite, Vanilla JS
 - **Versionado:** Git (opcional, no configurado)
 - **Hosting:** Local development. Para producción, usar AWS/Heroku
 

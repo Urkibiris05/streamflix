@@ -23,7 +23,7 @@ Plataforma de streaming de películas y series con arquitectura de tres capas (F
 ### 1. Arquitectura y Estructura
 - ✅ **Frontend (SPA):** Gestión de interfaz y rutas del lado del cliente
 - ✅ **Backend (API REST):** Lógica de negocio robusta
-- ✅ **Persistencia:** Sistema de almacenamiento con MySQL
+- ✅ **Persistencia:** Sistema de almacenamiento con SQLite local
 
 ### 2. Funcionalidades Requeridas
 - ✅ **Sistema de Registro:** Flujo completo de registro de usuarios
@@ -52,7 +52,7 @@ Plataforma de streaming de películas y series con arquitectura de tres capas (F
 └─────────────────────────────────────┘
            ↕ SQL
 ┌─────────────────────────────────────┐
-│   BASE DE DATOS (MySQL)              │
+│   BASE DE DATOS (SQLite)             │
 │  ├─ user                             │
 │  ├─ movie                            │
 │  └─ favorites                        │
@@ -65,7 +65,7 @@ Plataforma de streaming de películas y series con arquitectura de tres capas (F
 
 ### Requisitos Previos
 - Python 3.8+
-- MySQL Server 5.7+
+- SQLite (incluido en Python)
 - Node.js (opcional, para servir archivos estáticos)
 
 ### Paso 1: Clonar el Repositorio
@@ -73,20 +73,11 @@ Plataforma de streaming de películas y series con arquitectura de tres capas (F
 cd streamflix
 ```
 
-### Paso 2: Crear Base de Datos MySQL
-```bash
-mysql -u root -p
-```
+### Paso 2: Inicializar la Base de Datos
+El backend usa SQLite por defecto y crea el archivo local `streamflix.db` automáticamente la primera vez que se ejecuta.
 
-```sql
-CREATE DATABASE streamflix;
-USE streamflix;
-```
+Si deseas revisar la estructura, `schema.sql` contiene el esquema de tablas usado por el proyecto.
 
-Ejecutar el script de esquema:
-```bash
-mysql -u root -p streamflix < schema.sql
-```
 
 ### Paso 3: Configurar el Backend
 ```bash
@@ -94,15 +85,20 @@ mysql -u root -p streamflix < schema.sql
 pip install -r requirements.txt
 ```
 
-Editar `app.py` y configurar la cadena de conexión a MySQL:
+El backend está configurado por defecto para usar SQLite local:
 ```python
-app.config['SQLALCHEMY_DATABASE_URI'] = 'mysql+pymysql://root:tu_password@localhost/streamflix'
+app.config['SQLALCHEMY_DATABASE_URI'] = f"sqlite:///{os.path.join(basedir, 'streamflix.db')}"
 ```
+
+Si deseas usar MySQL, cambia esta línea por la URI de tu servidor.
 
 ### Paso 4: Iniciar el Backend
 ```bash
 python app.py
 ```
+
+Al iniciar, `app.py` creará `streamflix.db` y, si no hay datos, ejecutará `seed.sql` automáticamente para poblar los usuarios y las películas de ejemplo.
+
 
 El servidor Flask estará disponible en: **http://localhost:5000**
 
@@ -172,41 +168,41 @@ streamflix/
 ### Tabla: `user`
 ```sql
 CREATE TABLE user (
-    id INT AUTO_INCREMENT PRIMARY KEY,
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
     username VARCHAR(120) UNIQUE NOT NULL,
     email VARCHAR(120) UNIQUE NOT NULL,
     password_hash VARCHAR(255) NOT NULL,
-    role ENUM('user', 'admin') DEFAULT 'user',
-    is_active BOOLEAN DEFAULT TRUE,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+    role VARCHAR(20) DEFAULT 'user',
+    is_active BOOLEAN DEFAULT 1,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 ```
 
 ### Tabla: `movie`
 ```sql
 CREATE TABLE movie (
-    id INT AUTO_INCREMENT PRIMARY KEY,
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
     title VARCHAR(255) NOT NULL,
     description TEXT,
     director VARCHAR(255),
     genre VARCHAR(100),
     release_date DATE,
-    duration_minutes INT,
-    rating FLOAT,
+    duration_minutes INTEGER,
+    rating REAL,
     poster_url VARCHAR(500),
     video_url VARCHAR(500),
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 ```
 
 ### Tabla: `favorites`
 ```sql
 CREATE TABLE favorites (
-    movie_id INT NOT NULL,
-    user_id INT NOT NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    movie_id INTEGER NOT NULL,
+    user_id INTEGER NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (movie_id, user_id),
     FOREIGN KEY (movie_id) REFERENCES movie(id) ON DELETE CASCADE,
     FOREIGN KEY (user_id) REFERENCES user(id) ON DELETE CASCADE
@@ -245,6 +241,28 @@ CREATE TABLE favorites (
 
 ---
 
+## 👥 USUARIOS DE PRUEBA
+
+El proyecto incluye usuarios iniciales en `seed.sql`:
+
+- **Administrador**
+  - Username: `admin`
+  - Email: `admin@example.com`
+  - Contraseña: `demo123`
+  - Rol: `admin`
+  - Puede crear, editar y eliminar películas.
+
+- **Usuario normal**
+  - Username: `demo`
+  - Email: `demo@example.com`
+  - Contraseña: `demo123`
+  - Rol: `user`
+  - Puede ver películas, iniciar sesión y gestionar favoritos.
+
+> Si el archivo `seed.sql` no está disponible, `app.py` crea un usuario `demo` con rol `admin` como backup.
+
+---
+
 ## 🛠️ STACK TECNOLÓGICO
 
 ### Frontend
@@ -260,8 +278,8 @@ CREATE TABLE favorites (
 - **Flask-CORS:** Control de CORS para peticiones del frontend
 
 ### Base de Datos
-- **MySQL 5.7+:** Base de datos relacional
-- **PyMySQL:** Conector Python para MySQL
+- **SQLite:** Base de datos local integrada en Python
+- **sqlite3:** Conector interno de Python para el archivo `streamflix.db`
 
 ### Autenticación y Seguridad
 - **Bcrypt:** Hash seguro de contraseñas
@@ -301,10 +319,10 @@ CREATE TABLE favorites (
 pip install -r requirements.txt
 ```
 
-### Error: "Can't connect to MySQL"
-- Verificar que MySQL está corriendo: `mysql -u root -p`
-- Verificar credenciales en `app.py`
-- Verificar que la BD `streamflix` existe
+### Error: "No se puede abrir la base de datos SQLite"
+- Verificar que `app.py` puede crear y leer `streamflix.db`
+- Ejecutar `python app.py` y revisar la salida por errores
+- Asegurarse de que `app.config['SQLALCHEMY_DATABASE_URI']` apunte a `sqlite:///streamflix.db`
 
 ### Error: CORS en el frontend
 - Verificar que Flask-CORS está instalado

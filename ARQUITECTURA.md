@@ -54,7 +54,7 @@
 ┌─────────────────────────────────────────────────────────────┐
 │               CAPA DE PERSISTENCIA (BD)                         │
 │  ┌──────────────────────────────────────────────────────────┐ │
-│  │  SQLAlchemy ORM (models.py)                              │ │
+│  │  SQLAlchemy ORM (app.py)                                 │ │
 │  │  ┌────────────────────────────────────────────────────┐  │ │
 │  │  │  Modelos                                          │  │ │
 │  │  │  - User (usuarios)                                │  │ │
@@ -64,7 +64,7 @@
 │  └──────────────────────────────────────────────────────────┘ │
 │                              ↓                                  │
 │  ┌──────────────────────────────────────────────────────────┐ │
-│  │  MySQL Database                                          │ │
+│  │  SQLite Database (`streamflix.db`)                       │ │
 │  │  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐   │ │
 │  │  │ user         │  │ movie        │  │ favorites    │   │ │
 │  │  │ - id         │  │ - id         │  │ - user_id (FK)   │ │
@@ -140,7 +140,7 @@
           │ 2. SELECT * FROM movie;
           ↓
 ┌──────────────────────────────┐
-│  Base de Datos (MySQL)       │
+│  Base de Datos (SQLite)       │
 │  ┌─────────────────────────┐ │
 │  │ movie table             │ │
 │  │ ┌──────────────────────┐│ │
@@ -211,7 +211,7 @@
           │    db.session.commit()
           ↓
 ┌──────────────────────────────────────┐
-│  MySQL Database                      │
+│  SQLite Database (`streamflix.db`)     │
 │  INSERT INTO movie (...)             │
 │  VALUES (...)                        │
 │  → Nueva película agregada           │
@@ -256,7 +256,7 @@
           │    db.session.commit()
           ↓
 ┌────────────────────────────────────┐
-│  MySQL Database                    │
+│  SQLite Database (`streamflix.db`)     │
 │  DELETE FROM movie WHERE id = 5;   │
 │  (Favoritos también eliminados     │
 │   por Foreign Key)                 │
@@ -311,7 +311,7 @@
           │    db.session.commit()
           ↓
 ┌──────────────────────────────┐
-│  MySQL Database              │
+│  SQLite Database (`streamflix.db`)     │
 │  INSERT INTO favorites       │
 │  (user_id, movie_id)         │
 │  VALUES (1, 2)               │
@@ -363,7 +363,7 @@
           │
           ↓
 ┌────────────────────────────────────────────┐
-│  MySQL Database                            │
+│  SQLite Database (`streamflix.db`)     │
 │  INSERT INTO user                          │
 │  password_hash: "$2b$12$R9h/cIPz0... (128) │
 │  (nunca la contraseña original)            │

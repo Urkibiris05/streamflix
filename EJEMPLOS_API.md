@@ -115,6 +115,24 @@ fetch('http://localhost:5000/api/login', {
 
 ---
 
+## 👥 USUARIOS DE PRUEBA
+
+Puedes usar estas cuentas iniciales para  probar la aplicación rápidamente:
+
+- **Administrador**
+  - Email: `admin@example.com`
+  - Password: `demo123`
+  - Role: `admin`
+  - Puede crear, editar y eliminar películas
+
+- **Usuario normal**
+  - Email: `demo@example.com`
+  - Password: `demo123`
+  - Role: `user`
+  - Puede ver películas y gestionar favoritos
+
+---
+
 ## 🎬 PELÍCULAS (CRUD)
 
 ### 3. OBTENER TODAS LAS PELÍCULAS (GET)
@@ -362,7 +380,6 @@ fetch(`http://localhost:5000/api/peliculas/${movieId}`, {
 
 **Endpoint:** `POST /api/favoritos`
 
-$
 **Requiere:** Token JWT autenticado (cualquier rol)
 
 #### cURL con Token

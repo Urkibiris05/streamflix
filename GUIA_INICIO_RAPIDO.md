@@ -9,32 +9,20 @@ Guía paso a paso para tener la aplicación funcionando en 10 minutos.
 
 ### Requisitos Mínimos
 - Python 3.8+
-- MySQL Server
+- SQLite (incluido en Python)
 - Git (opcional)
 
 ---
 
 ## 📍 PASO 1: Configurar Base de Datos (2 min)
 
-```bash
-# 1. Conectarse a MySQL
-mysql -u root -p
+La aplicación usa SQLite local por defecto y crea el archivo `streamflix.db` al iniciar.
 
-# 2. Crear BD
-mysql> CREATE DATABASE streamflix;
-mysql> USE streamflix;
-mysql> EXIT;
-
-# 3. Ejecutar esquema SQL
-mysql -u root -p streamflix < schema.sql
-
-# 4. (Opcional) Insertar datos de prueba
-mysql -u root -p streamflix < seed_data.sql
-```
+No necesitas ejecutar comandos de MySQL ni crear la base de datos manualmente.
 
 ### Verificación
 ```bash
-mysql -u root -p -e "USE streamflix; SELECT COUNT(*) as total_movies FROM movie;"
+python -c "import sqlite3; conn=sqlite3.connect('streamflix.db'); cur=conn.cursor(); cur.execute('SELECT name FROM sqlite_master WHERE type=\'table\''); print(cur.fetchall()); conn.close()"
 ```
 
 ---
@@ -45,10 +33,8 @@ mysql -u root -p -e "USE streamflix; SELECT COUNT(*) as total_movies FROM movie;
 # 1. Instalar dependencias
 pip install -r requirements.txt
 
-# 2. Editar credenciales MySQL en app.py (línea ~6)
-# Cambiar:
-# app.config['SQLALCHEMY_DATABASE_URI'] = 'mysql+pymysql://root:password@localhost/streamflix'
-# Por tu contraseña real
+# 2. Asegurarse de que app.py use SQLite por defecto
+# app.config['SQLALCHEMY_DATABASE_URI'] = f"sqlite:///{os.path.join(basedir, 'streamflix.db')}"
 
 # 3. Iniciar servidor Flask
 python app.py
@@ -92,16 +78,27 @@ localhost:8000 or 127.0.0.1:8000
 
 ### 1️⃣ Ir a http://localhost:8000
 
-### 2️⃣ Registrarse
-- Clica en "Registrarse"
-- Username: `admin_test`
-- Email: `admin@test.com`
-- Contraseña: `admin123`
-- Registrarse
+### 2️⃣ Iniciar Sesión con usuarios de prueba
+Puedes usar las cuentas incluidas en `seed.sql`:
 
-### 3️⃣ Iniciar Sesión
-- Usa tus credenciales
-- Se redirige a Catálogo de Películas
+- **Administrador**
+  - Usuario: `admin`
+  - Email: `admin@example.com`
+  - Contraseña: `demo123`
+
+- **Usuario normal**
+  - Usuario: `demo`
+  - Email: `demo@example.com`
+  - Contraseña: `demo123`
+
+### 3️⃣ Ver Películas
+- Verás todas las películas de la BD
+- Busca por título en el input
+- Clica ❤️ para agregar favoritos
+
+### 4️⃣ Panel Admin (si es admin)
+- Ve a "⚙️ Administración"
+- Crea, edita o elimina películas
 
 ### 4️⃣ Ver Películas
 - Verás todas las películas de la BD
@@ -166,24 +163,17 @@ streamflix/
 pip install -r requirements.txt
 ```
 
-### ❌ Error: "Can't connect to MySQL"
+### ❌ Error: "No se puede abrir la base de datos SQLite"
 
-```bash
-# Verificar que MySQL está corriendo
-# Windows
-net start MySQL80
+- Verificar que `app.py` está usando la URL de SQLite por defecto
+- Asegurarse de que el archivo `streamflix.db` sea legible por el usuario
+- Ejecutar `python app.py` y revisar la salida por errores
 
-# Linux
-sudo service mysql start
+### ❌ Error: "Access Denied" en SQLite
 
-# macOS
-mysql.server start
-```
-
-### ❌ Error: "Access Denied for user 'root'@'localhost'"
-
-1. Editar `app.py` línea 6
-2. Cambiar `password` por tu contraseña MySQL real
+- El archivo SQLite no usa usuarios ni contraseñas MySQL
+- El problema suele ser permiso de archivo o ruta incorrecta
+- Verifica que `app.config['SQLALCHEMY_DATABASE_URI']` apunte a `streamflix.db`
 
 ### ❌ Error: "CORS error" en el navegador
 
@@ -320,7 +310,7 @@ Tiempo: 5 minutos
 - 2:00-3:00 Buscar películas, agregar favoritos
 - 3:00-3:30 Panel admininistrativo
 - 3:30-4:00 Crear película como admin
-- 4:00-4:30 Mostrar BD en MySQL
+- 4:00-4:30 Mostrar BD en SQLite
 - 4:30-5:00 Resumen y conclusión
 ```
 
@@ -333,8 +323,8 @@ Tiempo: 5 minutos
    - En producción, usar environment variables
 
 2. **Base de Datos**
-   - Para development, puede ser local
-   - Para producción, usar servicio en nube (AWS RDS, etc)
+   - Para development, SQLite local es la opción predeterminada
+   - Para producción, se puede migrar a un servicio relacional en nube
 
 3. **CORS**
    - Actualmente permite localhost:8000 y 3000
@@ -357,7 +347,7 @@ Tiempo: 5 minutos
 - JWT: https://jwt.io/
 - Bcrypt: https://github.com/pyca/bcrypt
 - Fetch API: https://developer.mozilla.org/es/docs/Web/API/Fetch_API
-- MySQL: https://dev.mysql.com/
+- SQLite: https://www.sqlite.org/index.html
 
 ---
 
