@@ -4,7 +4,7 @@
  */
 
 // ==================== CONFIG ====================
-const API_URL = 'http://localhost:5000/api';
+const API_URL = '/api';
 let authToken = localStorage.getItem('authToken') || null;
 let currentUser = JSON.parse(localStorage.getItem('currentUser')) || null;
 
@@ -24,6 +24,7 @@ let currentRoute = routes.inicio;
 // ==================== INICIALIZACIÓN ====================
 document.addEventListener('DOMContentLoaded', () => {
   console.log('App initialized');
+  console.log('API URL:', API_URL);
   console.log('Stored authToken:', localStorage.getItem('authToken'));
   console.log('Stored currentUser:', localStorage.getItem('currentUser'));
 
@@ -331,6 +332,7 @@ async function fetchAPI(url, method = 'GET', body = null, token = null) {
   try {
     const options = {
       method,
+      mode: 'cors',
       headers: {
         'Content-Type': 'application/json'
       }

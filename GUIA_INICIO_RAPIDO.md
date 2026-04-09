@@ -27,16 +27,13 @@ python -c "import sqlite3; conn=sqlite3.connect('streamflix.db'); cur=conn.curso
 
 ---
 
-## 📍 PASO 2: Configurar Backend (3 min)
+## 📍 PASO 2: Configurar Backend y Frontend en un solo servidor (3 min)
 
 ```bash
 # 1. Instalar dependencias
 pip install -r requirements.txt
 
-# 2. Asegurarse de que app.py use SQLite por defecto
-# app.config['SQLALCHEMY_DATABASE_URI'] = f"sqlite:///{os.path.join(basedir, 'streamflix.db')}"
-
-# 3. Iniciar servidor Flask
+# 2. Iniciar servidor Flask
 python app.py
 ```
 
@@ -46,37 +43,15 @@ python app.py
 * Debug mode: on
 ```
 
-✅ **Backend listo en:** `http://localhost:5000`
+✅ **App lista en:** `http://localhost:5000`
 
----
-
-## 📍 PASO 3: Servir Frontend (2 min)
-
-**Opción A: Con Python**
-```bash
-# En otra terminal, en la carpeta del proyecto
-python -m http.server 8000
-```
-
-**Opción B: Con http-server (Node.js)**
-```bash
-npm install -g http-server
-http-server
-```
-
-### Verificación
-```
-... Hit [enter] to stop the server
-localhost:8000 or 127.0.0.1:8000
-```
-
-✅ **Frontend listo en:** `http://localhost:8000`
+> No necesitas ejecutar `python -m http.server` ni otro servidor estático.
 
 ---
 
 ## 🎯 PASO 4: Probar la Aplicación (3 min)
 
-### 1️⃣ Ir a http://localhost:8000
+### 1️⃣ Ir a http://localhost:5000
 
 ### 2️⃣ Iniciar Sesión con usuarios de prueba
 Puedes usar las cuentas incluidas en `seed.sql`:
@@ -184,10 +159,10 @@ pip install -r requirements.txt
 
 1. Verificar URLs en `app.js`:
    ```javascript
-   const API_URL = 'http://localhost:5000/api';
+   const API_URL = '/api';
    ```
 
-2. Verificar que backend está corriendo en http://localhost:5000
+2. Verificar que la aplicación está corriendo en http://localhost:5000
 
 3. Verificar en la consola del navegador (F12 → Console)
 
@@ -263,7 +238,7 @@ pip install -r requirements.txt
 
 **Scenario 1: Nuevo Usuario**
 ```
-1. Ir a http://localhost:8000
+1. Ir a http://localhost:5000
 2. Clica "Registrarse"
 3. Completa formulario con datos:
    - Username: jose_123
@@ -327,8 +302,8 @@ Tiempo: 5 minutos
    - Para producción, se puede migrar a un servicio relacional en nube
 
 3. **CORS**
-   - Actualmente permite localhost:8000 y 3000
-   - En producción, cambiar a dominio real
+   - En la configuración actual no necesitas CORS porque backend y frontend usan el mismo origen (`http://localhost:5000`)
+   - En producción, cambiar a dominio real si separas frontend y backend
 
 4. **JWT Secret**
    - Cambiar en `config.py` en producción
@@ -366,8 +341,7 @@ En caso de errores:
 
 Si todo está funcionando, deberías ver:
 
-✅ Frontend SPA en http://localhost:8000
-✅ Backend API en http://localhost:5000/api/peliculas
+✅ Frontend y backend en http://localhost:5000
 ✅ Base de Datos con datos de prueba
 ✅ Usuarios registrados
 ✅ Películas disponibles

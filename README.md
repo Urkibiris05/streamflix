@@ -92,30 +92,16 @@ app.config['SQLALCHEMY_DATABASE_URI'] = f"sqlite:///{os.path.join(basedir, 'stre
 
 Si deseas usar MySQL, cambia esta línea por la URI de tu servidor.
 
-### Paso 4: Iniciar el Backend
+### Paso 4: Iniciar el Backend y el Frontend
 ```bash
 python app.py
 ```
 
 Al iniciar, `app.py` creará `streamflix.db` y, si no hay datos, ejecutará `seed.sql` automáticamente para poblar los usuarios y las películas de ejemplo.
 
+La aplicación estará disponible en: **http://localhost:5000**
 
-El servidor Flask estará disponible en: **http://localhost:5000**
-
-### Paso 5: Servir el Frontend
-
-Opción A - Con Python:
-```bash
-python -m http.server 8000
-```
-
-Opción B - Con Node.js (http-server):
-```bash
-npm install -g http-server
-http-server
-```
-
-Acceder a: **http://localhost:8000**
+> No es necesario servir el frontend por separado. Flask ya entrega `index.html` y `app.js`.
 
 ---
 

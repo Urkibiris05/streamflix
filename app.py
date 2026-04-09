@@ -75,13 +75,6 @@ def init_db():
                 print("Base de datos poblada correctamente")
             except FileNotFoundError:
                 print("Archivo seed.sql no encontrado, creando datos básicos...")
-                demo_user = User(
-                    username='demo',
-                    email='demo@example.com',
-                    password_hash='$2b$12$IOWaGAooEVVOg5IjCTOIAexFY227N2fY30KVDq8sWKGPNHwcrspO.',
-                    role='admin'
-                )
-                db.session.add(demo_user)
 
                 demo_movies = [
                     Movie(title='Inception', description='A skilled thief who steals corporate secrets through the use of dream-sharing technology.', director='Christopher Nolan', genre='Sci-Fi', release_date='2010-07-16', duration_minutes=148, rating=8.8, poster_url='https://images.unsplash.com/photo-1440404653325-ab127d49abc1?w=300'),
@@ -93,15 +86,6 @@ def init_db():
         else:
             print("Base de datos ya contiene datos; no es necesario sembrar de nuevo.")
 
-        # Asegurar que el usuario demo tenga la contraseña esperada
-        demo_password_hash = '$2b$12$IOWaGAooEVVOg5IjCTOIAexFY227N2fY30KVDq8sWKGPNHwcrspO.'
-        demo_user = User.query.filter_by(email='demo@example.com').first()
-        if demo_user:
-            if demo_user.password_hash != demo_password_hash:
-                demo_user.password_hash = demo_password_hash
-            if demo_user.role != 'admin':
-                demo_user.role = 'admin'
-            db.session.commit()
 
 # ==================== FUNCIÓN CORS MANUAL ====================
 def add_cors_headers(response):
@@ -131,6 +115,22 @@ def cors_enabled(f):
         return add_cors_headers(response)
     wrapper.__name__ = f.__name__
     return wrapper
+
+@app.before_request
+def handle_options():
+    if request.method == 'OPTIONS':
+        response = make_response()
+        response.headers['Access-Control-Allow-Origin'] = '*'
+        response.headers['Access-Control-Allow-Methods'] = 'GET, POST, PUT, DELETE, OPTIONS'
+        response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization'
+        return response
+
+@app.after_request
+def apply_cors_headers(response):
+    response.headers['Access-Control-Allow-Origin'] = '*'
+    response.headers['Access-Control-Allow-Methods'] = 'GET, POST, PUT, DELETE, OPTIONS'
+    response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization'
+    return response
 
 # ==================== RUTAS ====================
 
@@ -639,5 +639,4 @@ init_db()
 # ==================== INICIAR SERVIDOR ====================
 if __name__ == '__main__':
     print("STREAMFLIX corriendo en http://localhost:5000")
-    print("Frontend disponible en http://localhost:8000")
     app.run(debug=True, host='0.0.0.0', port=5000)

@@ -296,15 +296,12 @@ Testcases Cubiertos:         20+
 
 ### Opción 1: Automático (5 minutos)
 ```bash
-# 1. Backend
+# 1. Backend y frontend juntos
 pip install -r requirements.txt
 python app.py
 
-# 2. Frontend (otra terminal)
-python -m http.server 8000
-
-# 3. Abrir navegador
-http://localhost:8000
+# 2. Abrir navegador
+http://localhost:5000
 ```
 
 ### Opción 2: Manual
