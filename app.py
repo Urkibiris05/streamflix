@@ -121,8 +121,8 @@ def init_db():
                 print("Archivo seed.sql no encontrado, creando datos básicos...")
 
                 demo_movies = [
-                    Movie(title='Inception', description='A skilled thief who steals corporate secrets through the use of dream-sharing technology.', director='Christopher Nolan', genre='Sci-Fi', release_date='2010-07-16', duration_minutes=148, rating=8.8, poster_url='https://images.unsplash.com/photo-1440404653325-ab127d49abc1?w=300'),
-                    Movie(title='The Matrix', description='A hacker learns about the true nature of his reality and his role in the war against its controllers.', director='The Wachowskis', genre='Sci-Fi', release_date='1999-03-31', duration_minutes=136, rating=8.7, poster_url='https://images.unsplash.com/photo-1485095329183-d0daf68471ca?w=300')
+                    Movie(title='Inception', description='Un ladrón experto que roba secretos corporativos utilizando tecnología de intercambio de sueños.', director='Christopher Nolan', genre='Ciencia Ficción', release_date='2010-07-16', duration_minutes=148, rating=8.8, poster_url='https://images.unsplash.com/photo-1440404653325-ab127d49abc1?w=300'),
+                    Movie(title='Matrix', description='Un hacker aprende la verdadera naturaleza de su realidad y su papel en la guerra contra sus controladores.', director='Las Wachowski', genre='Ciencia Ficción', release_date='1999-03-31', duration_minutes=136, rating=8.7, poster_url='https://images.unsplash.com/photo-1485095329183-d0daf68471ca?w=300')
                 ]
                 db.session.add_all(demo_movies)
                 db.session.commit()
