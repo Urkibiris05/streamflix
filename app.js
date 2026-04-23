@@ -19,6 +19,7 @@ const routes = {
 };
 // Variable global para seguir el rastro de los favoritos en el catálogo
 let userFavIds = [];
+let userFavSeriesIds = [];
 let currentRoute = routes.inicio;
 
 // ==================== INICIALIZACIÓN ====================
@@ -199,43 +200,74 @@ async function renderPeliculas() {
   const content = document.getElementById('content');
   content.innerHTML = `<div class="container"><h2>Nuestro Catálogo</h2><div id="peliculas-container" class="peliculas-grid"></div></div>`;
 
-  // 1. Obtener favoritos primero para saber qué marcar
-  const favoritos = await fetchAPI(`${API_URL}/favoritos`, 'GET', null, authToken);
-  userFavIds = favoritos ? favoritos.map(f => f.id) : [];
-
-  // 2. Obtener todas las películas
-  const peliculas = await fetchAPI(`${API_URL}/peliculas`, 'GET');
+  // 1. Obtener favoritos (películas y series)
+  const favoritosPeliculas = await fetchAPI(`${API_URL}/favoritos`, 'GET', null, authToken);
+  const favoritosSeries = await fetchAPI(`${API_URL}/series-favoritos`, 'GET', null, authToken);
   
-  if (peliculas) {
-    renderPeliculasGrid(peliculas); 
+  userFavIds = favoritosPeliculas ? favoritosPeliculas.map(f => f.id) : [];
+  userFavSeriesIds = favoritosSeries ? favoritosSeries.map(s => s.id) : [];
+
+  // 2. Obtener películas y series
+  const peliculas = await fetchAPI(`${API_URL}/peliculas`, 'GET');
+  const series = await fetchAPI(`${API_URL}/series`, 'GET');
+  
+  // 3. Combinar y renderizar
+  let contenido = '';
+  
+  if (peliculas && peliculas.length > 0) {
+    contenido += '<div><h3>Películas</h3><div class="peliculas-grid">';
+    peliculas.forEach(p => {
+      contenido += renderPeliculaCard(p, 'pelicula');
+    });
+    contenido += '</div></div>';
   }
+  
+  if (series && series.length > 0) {
+    contenido += '<div style="margin-top: 2rem;"><h3>Series</h3><div class="peliculas-grid">';
+    series.forEach(s => {
+      contenido += renderSerieCard(s);
+    });
+    contenido += '</div></div>';
+  }
+  
+  document.getElementById('peliculas-container').innerHTML = contenido;
 }
 
-function renderPeliculasGrid(peliculas, containerId = 'peliculas-container') {
-  const container = document.getElementById(containerId);
-  if (!container) return;
-  container.innerHTML = '';
-
-  peliculas.forEach(p => {
-    const isFav = userFavIds.includes(p.id);
-    const card = document.createElement('div');
-    card.className = `pelicula-card ${isFav ? 'card-highlight' : ''}`;
-    card.style.cursor = 'pointer';
-    card.onclick = () => mostrarDetalles(p.id);
-    
-    card.innerHTML = `
+function renderPeliculaCard(p, type = 'pelicula') {
+  const isFav = userFavIds.includes(p.id);
+  return `
+    <div class="pelicula-card ${isFav ? 'card-highlight' : ''}" style="cursor: pointer;" onclick="mostrarDetalles('${type}', ${p.id})">
       <img src="${p.poster_url}" alt="${p.title}" style="cursor: pointer;">
       <div class="card-content">
         <h3>${p.title} ${isFav ? '⭐' : ''}</h3> 
         <div class="card-buttons">
-          <button class="btn ${isFav ? 'btn-active-fav' : 'btn-favorite'}" onclick="event.stopPropagation(); toggleFavorito(${p.id})">
+          <button class="btn ${isFav ? 'btn-active-fav' : 'btn-favorite'}" onclick="event.stopPropagation(); toggleFavorito('pelicula', ${p.id})">
             ${isFav ? '❤️ Quitar' : '🤍 Favorito'}
           </button>
         </div>
       </div>
-    `;
-    container.appendChild(card);
-  });
+    </div>
+  `;
+}
+
+function renderSerieCard(s) {
+  const isFav = userFavSeriesIds.includes(s.id);
+  return `
+    <div class="pelicula-card ${isFav ? 'card-highlight' : ''}" style="cursor: pointer; border: 2px solid #ff6b9d;" onclick="mostrarDetalles('serie', ${s.id})">
+      <div style="position: relative;">
+        <img src="${s.poster_url}" alt="${s.title}" style="cursor: pointer;">
+        <span style="position: absolute; top: 8px; right: 8px; background: #ff6b9d; color: white; padding: 0.3rem 0.6rem; border-radius: 4px; font-size: 0.8rem; font-weight: bold;">SERIE</span>
+      </div>
+      <div class="card-content">
+        <h3>${s.title} ${isFav ? '⭐' : ''}</h3> 
+        <div class="card-buttons">
+          <button class="btn ${isFav ? 'btn-active-fav' : 'btn-favorite'}" onclick="event.stopPropagation(); toggleFavorito('serie', ${s.id})">
+            ${isFav ? '❤️ Quitar' : '🤍 Favorito'}
+          </button>
+        </div>
+      </div>
+    </div>
+  `;
 }
 
 function setupBusqueda(peliculasOriginales) {
@@ -540,45 +572,57 @@ async function eliminarPelicula(id) {
 }
 
 // ==================== FUNCIONES: FAVORITOS ====================
-async function toggleFavorito(movieId) {
+async function toggleFavorito(type, itemId) {
   if (!authToken) {
     alert('Necesitas iniciar sesión para agregar favoritos.');
     navigateTo(routes.login);
     return;
   }
 
-  const response = await fetchAPI(`${API_URL}/favoritos`, 'POST', { movie_id: movieId }, authToken);
+  const endpoint = type === 'serie' ? '/api/series-favoritos' : '/api/favoritos';
+  const body = type === 'serie' 
+    ? { series_id: itemId }
+    : { movie_id: itemId };
+
+  const response = await fetchAPI(`${API_URL}${endpoint}`, 'POST', body, authToken);
   
   if (response) {
-    const mensaje = response.mensaje || 'Película añadida a favoritos.';
+    const mensaje = response.mensaje || 'Agregado a favoritos.';
     alert(mensaje);
+
+    // Actualizar el array de favoritos
+    if (type === 'serie') {
+      if (!userFavSeriesIds.includes(itemId)) {
+        userFavSeriesIds.push(itemId);
+      }
+    } else {
+      if (!userFavIds.includes(itemId)) {
+        userFavIds.push(itemId);
+      }
+    }
 
     // Si estamos en la página de favoritos, actualizar la vista
     if (currentRoute === routes.favoritos) {
       renderFavoritos();
     }
-
-    // Actualizar el botón visualmente
-    updateFavoriteButton(movieId);
   }
 }
 
-function updateFavoriteButton(movieId) {
-  const buttons = document.querySelectorAll(`button[onclick*="toggleFavorito(${movieId})"]`);
-  buttons.forEach(button => {
-    button.textContent = '❤️ Agregado';
-    button.disabled = true;
-    button.style.opacity = '0.7';
-    setTimeout(() => {
-      button.textContent = '❤️ Favorito';
-      button.disabled = false;
-      button.style.opacity = '1';
-    }, 1500);
-  });
+// ==================== FUNCIONES: UTILIDADES ====================
+async function mostrarDetalles(type, id) {
+  try {
+    if (type === 'serie') {
+      await mostrarDetallesSerie(id);
+    } else {
+      await mostrarDetallesPelicula(id);
+    }
+  } catch (error) {
+    console.error('Error al obtener detalles:', error);
+    alert('Error al cargar los detalles');
+  }
 }
 
-// ==================== FUNCIONES: UTILIDADES ====================
-async function mostrarDetalles(id) {
+async function mostrarDetallesPelicula(id) {
   try {
     console.log(`Obteniendo detalles de película ${id}`);
     const pelicula = await fetchAPI(`${API_URL}/peliculas/${id}`, 'GET');
@@ -588,10 +632,17 @@ async function mostrarDetalles(id) {
       return;
     }
 
+    // Obtener críticas y rating promedio
+    const reviews = await fetchAPI(`${API_URL}/peliculas/${id}/reviews`, 'GET');
+    const ratingData = await fetchAPI(`${API_URL}/peliculas/${id}/average-rating`, 'GET');
+    
     const esFavorito = userFavIds.includes(id);
     const posterUrl = pelicula.poster_url || 'https://via.placeholder.com/300x450?text=No+Image';
     
-    const detailsHTML = `
+    // Verificar si el usuario ya tiene una crítica para esta película
+    const userReview = reviews && reviews.find(r => r.user_id === currentUser?.id);
+    
+    let detailsHTML = `
       <div class="movie-detail">
         <div class="movie-poster">
           <img src="${posterUrl}" alt="${pelicula.title}" onerror="this.src='https://via.placeholder.com/300x450?text=No+Image'">
@@ -629,10 +680,111 @@ async function mostrarDetalles(id) {
 
           <div class="movie-controls">
             <button class="btn btn-primary" onclick="cerrarDetalles()">Cerrar</button>
-            <button class="btn ${esFavorito ? 'btn-danger' : 'btn-favorite'}" onclick="toggleFavorito(${pelicula.id})">
+            <button class="btn ${esFavorito ? 'btn-danger' : 'btn-favorite'}" onclick="toggleFavorito('pelicula', ${pelicula.id})">
               ${esFavorito ? '❌ Eliminar de Favoritos' : '❤️ Agregar a Favoritos'}
             </button>
           </div>
+        </div>
+      </div>
+
+      <!-- SECCIÓN DE CRÍTICAS Y RATINGS -->
+      <div class="reviews-section" style="margin-top: 2rem; padding: 1.5rem; background: rgba(102, 126, 234, 0.1); border-radius: 8px;">
+        <h3 style="color: #667eea; margin-bottom: 1rem;">⭐ Críticas y Calificaciones</h3>
+        
+        <!-- Rating Promedio -->
+        <div class="rating-summary" style="background: white; padding: 1rem; border-radius: 6px; margin-bottom: 1.5rem; text-align: center;">
+          <div style="font-size: 2rem; font-weight: bold; color: #667eea;">
+            ${ratingData ? ratingData.average_rating : '0.00'}/10
+          </div>
+          <p style="color: #666; margin: 0.5rem 0 0 0;">
+            Basado en ${ratingData ? ratingData.total_reviews : '0'} crítica${ratingData && ratingData.total_reviews !== 1 ? 's' : ''}
+          </p>
+        </div>
+
+        <!-- Formulario para crear crítica -->
+        ${authToken ? `
+          <div id="create-review-form" style="background: white; padding: 1rem; border-radius: 6px; margin-bottom: 1.5rem;">
+            ${userReview ? `
+              <p style="color: #667eea; font-weight: bold; margin-bottom: 1rem;">Tu crítica:</p>
+            ` : `
+              <h4 style="margin-top: 0; color: #333;">Escribe tu crítica</h4>
+            `}
+            <form onsubmit="crearOEditarReview(event, ${id}, ${userReview ? userReview.id : 'null'})" style="display: flex; flex-direction: column; gap: 0.8rem;">
+              <div>
+                <label style="display: block; margin-bottom: 0.5rem; color: #333; font-weight: 500;">Calificación (1-10):</label>
+                <input 
+                  type="number" 
+                  id="review-rating" 
+                  min="1" 
+                  max="10" 
+                  placeholder="Ej: 8"
+                  value="${userReview ? userReview.rating : ''}"
+                  required
+                  style="width: 100%; padding: 0.6rem; border: 1px solid #ddd; border-radius: 4px; box-sizing: border-box;"
+                >
+              </div>
+              <div>
+                <label style="display: block; margin-bottom: 0.5rem; color: #333; font-weight: 500;">Tu crítica (opcional):</label>
+                <textarea 
+                  id="review-text" 
+                  placeholder="Comparte tu opinión sobre esta película..."
+                  style="width: 100%; padding: 0.6rem; border: 1px solid #ddd; border-radius: 4px; box-sizing: border-box; font-family: inherit; font-size: 0.95rem; min-height: 80px; resize: vertical;"
+                >${userReview ? (userReview.review_text || '') : ''}</textarea>
+              </div>
+              <div style="display: flex; gap: 0.8rem;">
+                <button type="submit" class="btn btn-primary" style="flex: 1;">
+                  ${userReview ? '✏️ Actualizar crítica' : '➕ Enviar crítica'}
+                </button>
+                ${userReview ? `
+                  <button type="button" class="btn btn-danger" onclick="eliminarReview(${userReview.id}, ${id})" style="flex: 1;">
+                    🗑️ Eliminar mi crítica
+                  </button>
+                ` : ''}
+              </div>
+            </form>
+          </div>
+        ` : `
+          <div style="background: #fff3cd; padding: 1rem; border-radius: 6px; margin-bottom: 1.5rem; color: #856404;">
+            <p style="margin: 0;">👤 <a href="#" onclick="navigateTo('${routes.login}'); return false;" style="color: #667eea; text-decoration: underline;">Inicia sesión</a> para escribir una crítica</p>
+          </div>
+        `}
+
+        <!-- Lista de críticas -->
+        <div id="reviews-list" style="background: white; border-radius: 6px; padding: 1rem;">
+          ${reviews && reviews.length > 0 ? `
+            <h4 style="margin-top: 0; color: #333; margin-bottom: 1rem;">Críticas de usuarios (${reviews.length})</h4>
+            ${reviews.map((review, index) => `
+              <div style="padding: 1rem; border-bottom: ${index < reviews.length - 1 ? '1px solid #eee' : 'none'}; position: relative;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+                  <div style="display: flex; align-items: center; gap: 0.8rem;">
+                    <strong style="color: #667eea;">${review.username}</strong>
+                    <span style="color: #ffc107; font-size: 1.1rem;">⭐ ${review.rating}/10</span>
+                  </div>
+                  ${currentUser?.id === review.user_id ? `
+                    <button 
+                      class="btn btn-small btn-danger" 
+                      onclick="eliminarReview(${review.id}, ${id})"
+                      style="padding: 0.4rem 0.8rem; font-size: 0.85rem;"
+                    >
+                      ✕
+                    </button>
+                  ` : ''}
+                </div>
+                ${review.review_text ? `
+                  <p style="color: #555; margin: 0.5rem 0 0 0; line-height: 1.5;">
+                    "${review.review_text}"
+                  </p>
+                ` : ''}
+                <small style="color: #999;">
+                  ${new Date(review.created_at).toLocaleDateString('es-ES')}
+                </small>
+              </div>
+            `).join('')}
+          ` : `
+            <p style="color: #999; margin: 0; text-align: center; padding: 1rem;">
+              No hay críticas aún. ¡Sé el primero en escribir una!
+            </p>
+          `}
         </div>
       </div>
     `;
@@ -642,6 +794,158 @@ async function mostrarDetalles(id) {
   } catch (error) {
     console.error('Error al obtener detalles:', error);
     alert('Error al cargar los detalles de la película');
+  }
+}
+
+async function mostrarDetallesSerie(id) {
+  try {
+    console.log(`Obteniendo detalles de serie ${id}`);
+    const serie = await fetchAPI(`${API_URL}/series/${id}`, 'GET');
+    
+    if (!serie || serie.error) {
+      alert('No se pudieron obtener los detalles de la serie');
+      return;
+    }
+
+    const esFavorito = userFavSeriesIds.includes(id);
+    const posterUrl = serie.poster_url || 'https://via.placeholder.com/300x450?text=No+Image';
+    
+    // Agrupar episodios por temporada
+    const episodiosPorTemporada = serie.episodes_by_season || {};
+    
+    let detailsHTML = `
+      <div class="movie-detail">
+        <div class="movie-poster">
+          <img src="${posterUrl}" alt="${serie.title}" onerror="this.src='https://via.placeholder.com/300x450?text=No+Image'">
+        </div>
+        <div class="movie-info">
+          <h2>${serie.title} <span style="color: #ff6b9d; font-size: 0.8em;">📺 SERIE</span></h2>
+          
+          <div class="movie-meta">
+            <div class="meta-item">
+              <span class="meta-label">Género</span>
+              <span class="meta-value">${serie.genre || 'No especificado'}</span>
+            </div>
+            <div class="meta-item">
+              <span class="meta-label">Creador</span>
+              <span class="meta-value">${serie.director || 'No especificado'}</span>
+            </div>
+            <div class="meta-item">
+              <span class="meta-label">Año de Estreno</span>
+              <span class="meta-value">${serie.release_date ? serie.release_date.slice(0, 4) : 'No especificado'}</span>
+            </div>
+          </div>
+
+          <h3 style="color: #667eea; margin-top: 1.5rem; margin-bottom: 0.8rem;">Sinopsis</h3>
+          <div class="movie-description">
+            ${serie.description || 'No hay descripción disponible'}
+          </div>
+
+          <div class="movie-controls">
+            <button class="btn btn-primary" onclick="cerrarDetalles()">Cerrar</button>
+            <button class="btn ${esFavorito ? 'btn-danger' : 'btn-favorite'}" onclick="toggleFavorito('serie', ${serie.id})">
+              ${esFavorito ? '❌ Eliminar de Favoritos' : '❤️ Agregar a Favoritos'}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- SECCIÓN DE EPISODIOS -->
+      <div class="episodes-section" style="margin-top: 2rem; padding: 1.5rem; background: rgba(255, 107, 157, 0.1); border-radius: 8px;">
+        <h3 style="color: #ff6b9d; margin-bottom: 1rem;">📺 Episodios</h3>
+        
+        ${Object.keys(episodiosPorTemporada).sort((a,b) => a-b).map(season => `
+          <div class="season-section" style="margin-bottom: 2rem;">
+            <h4 style="color: #333; border-bottom: 2px solid #ff6b9d; padding-bottom: 0.5rem;">Temporada ${season}</h4>
+            <div style="display: grid; grid-template-columns: 1fr; gap: 0.8rem;">
+              ${episodiosPorTemporada[season].map((ep, idx) => `
+                <div style="background: white; padding: 1rem; border-radius: 6px; border-left: 4px solid #ff6b9d;">
+                  <div style="display: flex; justify-content: space-between; align-items: start; gap: 1rem;">
+                    <div style="flex: 1;">
+                      <h5 style="margin: 0 0 0.5rem 0; color: #333;">
+                        Cap. ${ep.episode_number}: ${ep.title}
+                      </h5>
+                      ${ep.description ? `
+                        <p style="color: #666; font-size: 0.9rem; margin: 0.5rem 0; line-height: 1.4;">
+                          ${ep.description}
+                        </p>
+                      ` : ''}
+                      <small style="color: #999;">
+                        ${ep.air_date ? new Date(ep.air_date).toLocaleDateString('es-ES') : 'Fecha no disponible'}
+                        ${ep.duration_minutes ? ' - ' + ep.duration_minutes + ' min' : ''}
+                      </small>
+                    </div>
+                    ${ep.video_url ? `
+                      <a href="${ep.video_url}" target="_blank" class="btn btn-small" style="white-space: nowrap;">
+                        ▶️ Ver
+                      </a>
+                    ` : ''}
+                  </div>
+                </div>
+              `).join('')}
+            </div>
+          </div>
+        `).join('')}
+      </div>
+    `;
+
+    document.getElementById('movieDetails').innerHTML = detailsHTML;
+    document.getElementById('movieModal').classList.add('active');
+  } catch (error) {
+    console.error('Error al obtener detalles:', error);
+    alert('Error al cargar los detalles de la serie');
+  }
+}
+
+// ==================== FUNCIONES: CRÍTICAS ====================
+async function crearOEditarReview(event, movieId, reviewId) {
+  event.preventDefault();
+
+  if (!authToken) {
+    alert('Necesitas iniciar sesión para escribir críticas');
+    navigateTo(routes.login);
+    return;
+  }
+
+  const rating = document.getElementById('review-rating').value;
+  const reviewText = document.getElementById('review-text').value;
+
+  if (!rating || rating < 1 || rating > 10) {
+    alert('La calificación debe estar entre 1 y 10');
+    return;
+  }
+
+  const reviewData = {
+    movie_id: movieId,
+    rating: parseInt(rating),
+    review_text: reviewText.trim()
+  };
+
+  let response;
+  if (reviewId && reviewId !== 'null') {
+    // Editar crítica existente
+    response = await fetchAPI(`${API_URL}/reviews/${reviewId}`, 'PUT', reviewData, authToken);
+  } else {
+    // Crear nueva crítica
+    response = await fetchAPI(`${API_URL}/reviews`, 'POST', reviewData, authToken);
+  }
+
+  if (response) {
+    alert(response.mensaje || 'Crítica guardada correctamente');
+    // Recargar los detalles para mostrar la crítica actualizada
+    mostrarDetalles(movieId);
+  }
+}
+
+async function eliminarReview(reviewId, movieId) {
+  if (!confirm('¿Estás seguro de que deseas eliminar tu crítica?')) return;
+
+  const response = await fetchAPI(`${API_URL}/reviews/${reviewId}`, 'DELETE', null, authToken);
+  
+  if (response) {
+    alert(response.mensaje || 'Crítica eliminada correctamente');
+    // Recargar los detalles para actualizar la lista de críticas
+    mostrarDetalles(movieId);
   }
 }
 

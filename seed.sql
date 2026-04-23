@@ -82,7 +82,31 @@ INSERT OR IGNORE INTO favorites (user_id, movie_id) VALUES
 INSERT OR IGNORE INTO favorites (user_id, movie_id) VALUES
 (5, 8), -- carlos_martinez favorita The Dark Knight
 (5, 18); -- carlos_martinez favorita Spirited Away
+-- ==================== INSERCIONES DE CRÍTICAS Y RATINGS ====================
 
+-- Críticas del usuario demo (id: 1)
+INSERT OR IGNORE INTO review (user_id, movie_id, rating, review_text, created_at, updated_at) VALUES
+(1, 1, 9, 'Una película increíble. Nolan es un genio. La narrativa no lineal me dejó fascimado. Totalmente recomendada.', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+(1, 8, 10, 'La mejor película de Christopher Nolan. Ledger es simplemente espectacular como el Joker. Magistral.', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+(1, 6, 9, 'Una obra maestra del cine. La actuación de Morgan Freeman y Tim Robbins es impecable. Imprescindible.', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
+
+-- Críticas de juan_doe (id: 3)
+INSERT OR IGNORE INTO review (user_id, movie_id, rating, review_text, created_at, updated_at) VALUES
+(3, 1, 8, 'Good movie, aunque un poco confusa al principio. Pero vale mucho la pena verla.', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+(3, 2, 9, 'The Matrix es una película que cambió el cine para siempre. Aún se ve perfecta hoy en día.', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+(3, 10, 7, 'Una película de acción divertida. Nada extraordinario pero entretenida.', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
+
+-- Críticas de maria_garcia (id: 4)
+INSERT OR IGNORE INTO review (user_id, movie_id, rating, review_text, created_at, updated_at) VALUES
+(4, 2, 10, 'Simplemente la mejor película de ciencia ficción. Los efectos siguen siendo increíbles.', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+(4, 3, 9, 'Interstellar es épica. La música de Hans Zimmer es simplemente hermosa.', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+(4, 7, 9, 'Fight Club es brutal e inteligente. Denzel Washington es excelente en este rol.', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
+
+-- Críticas de carlos_martinez (id: 5)
+INSERT OR IGNORE INTO review (user_id, movie_id, rating, review_text, created_at, updated_at) VALUES
+(5, 8, 10, 'The Dark Knight es la más grande película de superhéroes jamás realizada.', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+(5, 14, 9, 'Pulp Fiction es una obra de arte. Tarantino es un maestro del cine.', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+(5, 21, 8, 'Coco es una película hermosa con una historia conmovedora. Recomendadísima.', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
 -- ==================== NOTAS ====================
 /*
 IMPORTANTE: Los valores de password_hash son placeholders para testing.
@@ -96,3 +120,34 @@ Los usuarios creados son:
 
 Todas las películas se cargan con INSERT OR IGNORE para evitar duplicados.
 */
+
+-- ==================== INSERCIONES DE SERIES ====================
+
+-- Breaking Bad - Serie de prueba
+INSERT OR IGNORE INTO series (title, description, director, genre, release_date, poster_url, created_at, updated_at) VALUES
+('Breaking Bad', 'A high school chemistry teacher turned meth kingpin. A story of transformation, ambition, and the consequences of choices.', 'Vince Gilligan', 'Drama/Crime', '2008-01-20', 'https://m.media-amazon.com/images/M/MV5BMJQ0MTQ2MzAxNV5BMl5BanBnXkFtZTgwNTAwMzQxNzE@._V1_.jpg', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
+
+-- ==================== INSERCIONES DE EPISODIOS ====================
+
+-- Temporada 1
+INSERT OR IGNORE INTO episode (series_id, title, description, season, episode_number, air_date, duration_minutes, video_url, created_at, updated_at) VALUES
+(1, 'Pilot', 'When an unassuming high school chemistry teacher discovers he is dying, he decides to use his last years to gain wealth for his family.', 1, 1, '2008-01-20', 58, '', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+(1, 'Cat''s in the Bag', 'Walter must dispose of evidence while Jesse deals with a prisoner in chains. Hank celebrates his latest DEA bust.', 1, 2, '2008-01-27', 48, '', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+(1, 'And the Bag''s in the River', 'Walter and Jesse go to extreme lengths to dispose of evidence. Nacho sets his sights on Jesse for revenge.', 1, 3, '2008-02-03', 47, '', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+(1, 'Cancer Man', 'Walter Jr. worries about his father''s condition. Walter''s wife Skyler wants him to turn to his former teacher.', 1, 4, '2008-02-10', 47, '', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+(1, 'Gray Matter', 'When Walter uses chemistry to eliminate some undesirable gang members, Jesse grows anxious. Flashbacks reveal how Walter came to be a high school teacher.', 1, 5, '2008-02-17', 58, '', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+(1, 'Crazy Handful of Nothin''', 'Walter makes a bold move as a drug dealer. Jesse faces a hard choice when he spots an old flame. Walt Jr. gets in trouble at school.', 1, 6, '2008-02-24', 58, '', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+(1, 'A No-Rough-Stuff-Type Deal', 'Walter and Jesse must make a high-stakes decision when Krazy-8 and Emilio corner them.', 1, 7, '2008-03-09', 58, '', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
+
+-- Temporada 2
+INSERT OR IGNORE INTO episode (series_id, title, description, season, episode_number, air_date, duration_minutes, video_url, created_at, updated_at) VALUES
+(1, 'Seven Thirty-Seven', 'An old adversary surfaces in Albuquerque. Walt, Jesse, and Skyler face challenges as Walt lies to cover up his activities.', 2, 1, '2009-03-08', 58, '', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+(1, 'Grilled', 'Walter and Jesse are trapped in a dire situation. Hank investigates a connection to a major drug dealer.', 2, 2, '2009-03-15', 47, '', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+(1, 'Bit by a Dead Bee', 'Walt and Jesse are revealed after being found by DEA. Skyler becomes suspicious. A mysterious figure makes an appearance.', 2, 3, '2009-03-22', 47, '', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+(1, 'Down', 'Skyler fights for her marriage with Walt. Jesse spirals after a tough loss. Nacho leads a criminal enterprise.', 2, 4, '2009-03-29', 47, '', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+(1, 'Breakage', 'Walter and Jesse expand their operation. Skyler visits her son. Mike is introduced to the story.', 2, 5, '2009-04-05', 47, '', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
+
+-- Temporada 3 (primeros 2 episodios como ejemplo)
+INSERT OR IGNORE INTO episode (series_id, title, description, season, episode_number, air_date, duration_minutes, video_url, created_at, updated_at) VALUES
+(1, 'No Mas', 'Walt and Skyler face a turning point in their relationship. The Cousins arrive in Albuquerque.', 3, 1, '2010-03-21', 58, '', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+(1, 'Caballo sin Nombre', 'Jesse is traumatized by the aftermath. Walt makes a plea to a former associate.', 3, 2, '2010-03-28', 47, '', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);

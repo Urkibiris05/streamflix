@@ -49,6 +49,50 @@ class Favorites(db.Model):
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), primary_key=True)
     created_at = db.Column(db.DateTime, default=db.func.current_timestamp())
 
+class Review(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    movie_id = db.Column(db.Integer, db.ForeignKey('movie.id'), nullable=False)
+    rating = db.Column(db.Integer, nullable=False)  # Puntuación del 1 al 10
+    review_text = db.Column(db.Text, nullable=True)  # Crítica del usuario
+    created_at = db.Column(db.DateTime(timezone=True), default=db.func.current_timestamp())
+    updated_at = db.Column(db.DateTime(timezone=True), default=db.func.current_timestamp(), onupdate=db.func.current_timestamp())
+    
+    user = db.relationship('User', backref='reviews')
+    movie = db.relationship('Movie', backref='reviews')
+
+class Series(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    title = db.Column(db.String(255), nullable=False)
+    description = db.Column(db.Text)
+    director = db.Column(db.String(255))
+    genre = db.Column(db.String(100))
+    release_date = db.Column(db.Date)
+    poster_url = db.Column(db.String(500))
+    created_at = db.Column(db.DateTime(timezone=True), default=db.func.current_timestamp())
+    updated_at = db.Column(db.DateTime(timezone=True), default=db.func.current_timestamp(), onupdate=db.func.current_timestamp())
+    
+    episodes = db.relationship('Episode', backref='series', lazy=True, cascade='all, delete-orphan')
+    favorited_by = db.relationship('SeriesFavorites', backref='series', lazy=True)
+
+class Episode(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    series_id = db.Column(db.Integer, db.ForeignKey('series.id'), nullable=False)
+    title = db.Column(db.String(255), nullable=False)
+    description = db.Column(db.Text)
+    season = db.Column(db.Integer, nullable=False)
+    episode_number = db.Column(db.Integer, nullable=False)
+    air_date = db.Column(db.Date)
+    duration_minutes = db.Column(db.Integer)
+    video_url = db.Column(db.String(500))
+    created_at = db.Column(db.DateTime(timezone=True), default=db.func.current_timestamp())
+    updated_at = db.Column(db.DateTime(timezone=True), default=db.func.current_timestamp(), onupdate=db.func.current_timestamp())
+
+class SeriesFavorites(db.Model):
+    series_id = db.Column(db.Integer, db.ForeignKey('series.id'), primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), primary_key=True)
+    created_at = db.Column(db.DateTime, default=db.func.current_timestamp())
+
 # ==================== FUNCIONES DE INICIALIZACIÓN ====================
 def init_db():
     """Inicializar base de datos y crear tablas"""
@@ -631,6 +675,476 @@ def quitar_favorito(movie_id):
     except Exception as e:
         db.session.rollback()
         print(f"Error en quitar_favorito: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
+# --- API: SERIES ---
+@app.route('/api/series', methods=['GET'])
+@cors_enabled
+def obtener_series():
+    try:
+        series = Series.query.all()
+        return jsonify([{
+            'id': s.id,
+            'title': s.title,
+            'description': s.description,
+            'director': s.director,
+            'genre': s.genre,
+            'release_date': s.release_date.isoformat() if s.release_date else None,
+            'poster_url': s.poster_url,
+            'created_at': s.created_at.isoformat() if s.created_at else None,
+            'updated_at': s.updated_at.isoformat() if s.updated_at else None
+        } for s in series]), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/series/<int:id>', methods=['GET'])
+@cors_enabled
+def obtener_serie(id):
+    try:
+        serie = db.session.get(Series, id)
+        if not serie:
+            return jsonify({'error': 'Serie no encontrada'}), 404
+        
+        # Obtener todos los episodios ordenados por temporada y número
+        episodios = Episode.query.filter_by(series_id=id).order_by(Episode.season, Episode.episode_number).all()
+        
+        # Agrupar episodios por temporada
+        episodes_by_season = {}
+        for ep in episodios:
+            season = ep.season
+            if season not in episodes_by_season:
+                episodes_by_season[season] = []
+            episodes_by_season[season].append({
+                'id': ep.id,
+                'title': ep.title,
+                'description': ep.description,
+                'season': ep.season,
+                'episode_number': ep.episode_number,
+                'air_date': ep.air_date.isoformat() if ep.air_date else None,
+                'duration_minutes': ep.duration_minutes,
+                'video_url': ep.video_url,
+                'created_at': ep.created_at.isoformat() if ep.created_at else None,
+                'updated_at': ep.updated_at.isoformat() if ep.updated_at else None
+            })
+        
+        return jsonify({
+            'id': serie.id,
+            'title': serie.title,
+            'description': serie.description,
+            'director': serie.director,
+            'genre': serie.genre,
+            'release_date': serie.release_date.isoformat() if serie.release_date else None,
+            'poster_url': serie.poster_url,
+            'episodes_by_season': episodes_by_season,
+            'created_at': serie.created_at.isoformat() if serie.created_at else None,
+            'updated_at': serie.updated_at.isoformat() if serie.updated_at else None
+        }), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/series/<int:series_id>/episodes', methods=['GET'])
+@cors_enabled
+def obtener_episodios_serie(series_id):
+    try:
+        serie = db.session.get(Series, series_id)
+        if not serie:
+            return jsonify({'error': 'Serie no encontrada'}), 404
+        
+        episodios = Episode.query.filter_by(series_id=series_id).order_by(Episode.season, Episode.episode_number).all()
+        
+        return jsonify([{
+            'id': ep.id,
+            'title': ep.title,
+            'description': ep.description,
+            'season': ep.season,
+            'episode_number': ep.episode_number,
+            'air_date': ep.air_date.isoformat() if ep.air_date else None,
+            'duration_minutes': ep.duration_minutes,
+            'video_url': ep.video_url,
+            'created_at': ep.created_at.isoformat() if ep.created_at else None,
+            'updated_at': ep.updated_at.isoformat() if ep.updated_at else None
+        } for ep in episodios]), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/episodes/<int:id>', methods=['GET'])
+@cors_enabled
+def obtener_episodio(id):
+    try:
+        episodio = db.session.get(Episode, id)
+        if not episodio:
+            return jsonify({'error': 'Episodio no encontrado'}), 404
+        
+        return jsonify({
+            'id': episodio.id,
+            'series_id': episodio.series_id,
+            'series_title': episodio.series.title,
+            'title': episodio.title,
+            'description': episodio.description,
+            'season': episodio.season,
+            'episode_number': episodio.episode_number,
+            'air_date': episodio.air_date.isoformat() if episodio.air_date else None,
+            'duration_minutes': episodio.duration_minutes,
+            'video_url': episodio.video_url,
+            'created_at': episodio.created_at.isoformat() if episodio.created_at else None,
+            'updated_at': episodio.updated_at.isoformat() if episodio.updated_at else None
+        }), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+# --- API: FAVORITOS DE SERIES ---
+@app.route('/api/series-favoritos', methods=['GET'])
+@cors_enabled
+def obtener_series_favoritos():
+    try:
+        # Obtener user_id del token
+        auth_header = request.headers.get('Authorization')
+        if not auth_header or not auth_header.startswith('Bearer '):
+            return jsonify({'error': 'Token requerido'}), 401
+        
+        token = auth_header.split(' ')[1]
+        try:
+            user_id = int(token.split('_')[1])
+        except:
+            return jsonify({'error': 'Token inválido'}), 401
+
+        # Obtener series favoritas
+        series_fav = db.session.query(Series).join(
+            SeriesFavorites, 
+            Series.id == SeriesFavorites.series_id
+        ).filter(SeriesFavorites.user_id == user_id).all()
+        
+        return jsonify([{
+            'id': s.id,
+            'title': s.title,
+            'description': s.description,
+            'director': s.director,
+            'genre': s.genre,
+            'release_date': s.release_date.isoformat() if s.release_date else None,
+            'poster_url': s.poster_url
+        } for s in series_fav]), 200
+
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/series-favoritos', methods=['POST'])
+@cors_enabled
+def agregar_serie_favorito():
+    try:
+        # Obtener user_id del token
+        auth_header = request.headers.get('Authorization')
+        if not auth_header or not auth_header.startswith('Bearer '):
+            return jsonify({'error': 'Token requerido'}), 401
+        
+        token = auth_header.split(' ')[1]
+        try:
+            user_id = int(token.split('_')[1])
+        except:
+            return jsonify({'error': 'Token inválido'}), 401
+
+        datos = request.get_json()
+        series_id = datos.get('series_id')
+        if not series_id:
+            return jsonify({'error': 'series_id es requerido'}), 400
+
+        # Verificar que la serie existe
+        serie = db.session.get(Series, series_id)
+        if not serie:
+            return jsonify({'error': 'Serie no encontrada'}), 404
+
+        # Verificar que no esté ya en favoritos
+        existing = SeriesFavorites.query.filter_by(user_id=user_id, series_id=series_id).first()
+        if existing:
+            return jsonify({'error': 'La serie ya está en favoritos'}), 409
+
+        favorito = SeriesFavorites(user_id=user_id, series_id=series_id)
+        db.session.add(favorito)
+        db.session.commit()
+
+        return jsonify({'mensaje': 'Serie agregada a favoritos'}), 201
+
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/series-favoritos/<int:series_id>', methods=['DELETE'])
+@cors_enabled
+def quitar_serie_favorito(series_id):
+    try:
+        # Obtener user_id del token
+        auth_header = request.headers.get('Authorization')
+        if not auth_header or not auth_header.startswith('Bearer '):
+            return jsonify({'error': 'Token requerido'}), 401
+        
+        token = auth_header.split(' ')[1]
+        try:
+            user_id = int(token.split('_')[1])
+        except:
+            return jsonify({'error': 'Token inválido'}), 401
+
+        # Buscar y eliminar favorito
+        favorito = SeriesFavorites.query.filter_by(user_id=user_id, series_id=series_id).first()
+        if not favorito:
+            return jsonify({'error': 'Serie no está en favoritos'}), 404
+
+        db.session.delete(favorito)
+        db.session.commit()
+
+        return jsonify({'mensaje': 'Serie eliminada de favoritos'}), 200
+
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
+# --- API: CRÍTICAS Y RATINGS ---
+@app.route('/api/peliculas/<int:movie_id>/reviews', methods=['GET'])
+@cors_enabled
+def obtener_reviews_pelicula(movie_id):
+    try:
+        pelicula = db.session.get(Movie, movie_id)
+        if not pelicula:
+            return jsonify({'error': 'Película no encontrada'}), 404
+
+        reviews = Review.query.filter_by(movie_id=movie_id).order_by(Review.created_at.desc()).all()
+        
+        return jsonify([{
+            'id': r.id,
+            'user_id': r.user_id,
+            'username': r.user.username,
+            'movie_id': r.movie_id,
+            'rating': r.rating,
+            'review_text': r.review_text,
+            'created_at': r.created_at.isoformat() if r.created_at else None,
+            'updated_at': r.updated_at.isoformat() if r.updated_at else None
+        } for r in reviews]), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/peliculas/<int:movie_id>/average-rating', methods=['GET'])
+@cors_enabled
+def obtener_rating_promedio(movie_id):
+    try:
+        from sqlalchemy import func
+        
+        pelicula = db.session.get(Movie, movie_id)
+        if not pelicula:
+            return jsonify({'error': 'Película no encontrada'}), 404
+
+        resultado = db.session.query(
+            func.avg(Review.rating).label('average_rating'),
+            func.count(Review.id).label('total_reviews')
+        ).filter(Review.movie_id == movie_id).first()
+
+        average_rating = float(resultado.average_rating) if resultado.average_rating else 0
+        total_reviews = resultado.total_reviews or 0
+
+        return jsonify({
+            'movie_id': movie_id,
+            'average_rating': round(average_rating, 2),
+            'total_reviews': total_reviews
+        }), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/reviews', methods=['GET'])
+@cors_enabled
+def obtener_todas_reviews():
+    try:
+        # Obtener user_id del token
+        auth_header = request.headers.get('Authorization')
+        if not auth_header or not auth_header.startswith('Bearer '):
+            return jsonify({'error': 'Token requerido'}), 401
+        
+        token = auth_header.split(' ')[1]
+        try:
+            user_id = int(token.split('_')[1])
+        except:
+            return jsonify({'error': 'Token inválido'}), 401
+
+        # Obtener todas las críticas del usuario
+        reviews = Review.query.filter_by(user_id=user_id).order_by(Review.created_at.desc()).all()
+        
+        return jsonify([{
+            'id': r.id,
+            'user_id': r.user_id,
+            'movie_id': r.movie_id,
+            'movie_title': r.movie.title,
+            'rating': r.rating,
+            'review_text': r.review_text,
+            'created_at': r.created_at.isoformat() if r.created_at else None,
+            'updated_at': r.updated_at.isoformat() if r.updated_at else None
+        } for r in reviews]), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/reviews', methods=['POST'])
+@cors_enabled
+def crear_review():
+    try:
+        # Obtener user_id del token
+        auth_header = request.headers.get('Authorization')
+        if not auth_header or not auth_header.startswith('Bearer '):
+            return jsonify({'error': 'Token requerido'}), 401
+        
+        token = auth_header.split(' ')[1]
+        try:
+            user_id = int(token.split('_')[1])
+        except:
+            return jsonify({'error': 'Token inválido'}), 401
+
+        datos = request.get_json()
+        if not datos:
+            return jsonify({'error': 'No se proporcionaron datos'}), 400
+
+        movie_id = datos.get('movie_id')
+        rating = datos.get('rating')
+        review_text = datos.get('review_text', '')
+
+        if not movie_id or rating is None:
+            return jsonify({'error': 'movie_id y rating son requeridos'}), 400
+
+        # Validar rating
+        try:
+            rating = int(rating)
+            if rating < 1 or rating > 10:
+                return jsonify({'error': 'El rating debe estar entre 1 y 10'}), 400
+        except (ValueError, TypeError):
+            return jsonify({'error': 'El rating debe ser un número entre 1 y 10'}), 400
+
+        # Verificar que la película existe
+        movie = db.session.get(Movie, movie_id)
+        if not movie:
+            return jsonify({'error': 'Película no encontrada'}), 404
+
+        # Verificar si el usuario ya tiene una crítica para esta película
+        existing_review = Review.query.filter_by(user_id=user_id, movie_id=movie_id).first()
+        if existing_review:
+            return jsonify({'error': 'Ya tienes una crítica para esta película'}), 409
+
+        # Crear la crítica
+        review = Review(
+            user_id=user_id,
+            movie_id=movie_id,
+            rating=rating,
+            review_text=review_text.strip() if review_text else None,
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc)
+        )
+
+        db.session.add(review)
+        db.session.commit()
+
+        return jsonify({
+            'mensaje': 'Crítica creada exitosamente',
+            'review': {
+                'id': review.id,
+                'user_id': review.user_id,
+                'movie_id': review.movie_id,
+                'rating': review.rating,
+                'review_text': review.review_text,
+                'created_at': review.created_at.isoformat() if review.created_at else None,
+                'updated_at': review.updated_at.isoformat() if review.updated_at else None
+            }
+        }), 201
+
+    except Exception as e:
+        db.session.rollback()
+        print(f"Error en crear_review: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/reviews/<int:review_id>', methods=['PUT'])
+@cors_enabled
+def editar_review(review_id):
+    try:
+        # Obtener user_id del token
+        auth_header = request.headers.get('Authorization')
+        if not auth_header or not auth_header.startswith('Bearer '):
+            return jsonify({'error': 'Token requerido'}), 401
+        
+        token = auth_header.split(' ')[1]
+        try:
+            user_id = int(token.split('_')[1])
+        except:
+            return jsonify({'error': 'Token inválido'}), 401
+
+        review = db.session.get(Review, review_id)
+        if not review:
+            return jsonify({'error': 'Crítica no encontrada'}), 404
+
+        # Verificar que el usuario sea el propietario de la crítica
+        if review.user_id != user_id:
+            return jsonify({'error': 'No tienes permiso para editar esta crítica'}), 403
+
+        datos = request.get_json()
+        if not datos:
+            return jsonify({'error': 'No se proporcionaron datos'}), 400
+
+        # Actualizar rating si se proporciona
+        if 'rating' in datos:
+            try:
+                rating = int(datos['rating'])
+                if rating < 1 or rating > 10:
+                    return jsonify({'error': 'El rating debe estar entre 1 y 10'}), 400
+                review.rating = rating
+            except (ValueError, TypeError):
+                return jsonify({'error': 'El rating debe ser un número entre 1 y 10'}), 400
+
+        # Actualizar texto de crítica si se proporciona
+        if 'review_text' in datos:
+            review.review_text = datos['review_text'].strip() if datos['review_text'] else None
+
+        review.updated_at = datetime.now(timezone.utc)
+        db.session.commit()
+
+        return jsonify({
+            'mensaje': 'Crítica actualizada exitosamente',
+            'review': {
+                'id': review.id,
+                'user_id': review.user_id,
+                'movie_id': review.movie_id,
+                'rating': review.rating,
+                'review_text': review.review_text,
+                'created_at': review.created_at.isoformat() if review.created_at else None,
+                'updated_at': review.updated_at.isoformat() if review.updated_at else None
+            }
+        }), 200
+
+    except Exception as e:
+        db.session.rollback()
+        print(f"Error en editar_review: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/reviews/<int:review_id>', methods=['DELETE'])
+@cors_enabled
+def eliminar_review(review_id):
+    try:
+        # Obtener user_id del token
+        auth_header = request.headers.get('Authorization')
+        if not auth_header or not auth_header.startswith('Bearer '):
+            return jsonify({'error': 'Token requerido'}), 401
+        
+        token = auth_header.split(' ')[1]
+        try:
+            user_id = int(token.split('_')[1])
+        except:
+            return jsonify({'error': 'Token inválido'}), 401
+
+        review = db.session.get(Review, review_id)
+        if not review:
+            return jsonify({'error': 'Crítica no encontrada'}), 404
+
+        # Verificar que el usuario sea el propietario de la crítica
+        if review.user_id != user_id:
+            return jsonify({'error': 'No tienes permiso para eliminar esta crítica'}), 403
+
+        db.session.delete(review)
+        db.session.commit()
+
+        return jsonify({'mensaje': 'Crítica eliminada exitosamente'}), 200
+
+    except Exception as e:
+        db.session.rollback()
+        print(f"Error en eliminar_review: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
 # Inicializar base de datos siempre que se cargue la aplicación
