@@ -620,6 +620,8 @@ async function mostrarDetalles(id) {
   try {
     console.log(`Obteniendo detalles de película ${id}`);
     const pelicula = await fetchAPI(`${API_URL}/peliculas/${id}`, 'GET');
+    const reviews = await fetchAPI(`${API_URL}/peliculas/${id}/reviews`, 'GET');
+    const avg = await fetchAPI(`${API_URL}/peliculas/${id}/average-rating`, 'GET');
     
     if (!pelicula || pelicula.error) {
       alert('No se pudieron obtener los detalles de la película');
@@ -628,6 +630,9 @@ async function mostrarDetalles(id) {
 
     const esFavorito = userFavIds.includes(id);
     const posterUrl = pelicula.poster_url || 'https://via.placeholder.com/300x450?text=No+Image';
+    const averageRating = avg && typeof avg.average_rating === 'number' ? avg.average_rating : null;
+    const totalReviews = avg && typeof avg.total_reviews === 'number' ? avg.total_reviews : 0;
+    const reviewsHtml = renderReviewsSection(id, Array.isArray(reviews) ? reviews : []);
     
     const detailsHTML = `
       <div class="movie-detail">
@@ -641,6 +646,10 @@ async function mostrarDetalles(id) {
             <div class="meta-item">
               <span class="meta-label">Calificación</span>
               <span class="meta-value rating-large">⭐ ${pelicula.rating || 'N/A'}/10</span>
+            </div>
+            <div class="meta-item">
+              <span class="meta-label">Valoración usuarios</span>
+              <span class="meta-value rating-large">${averageRating !== null ? `⭐ ${averageRating}/10` : 'Sin valoraciones'} (${totalReviews})</span>
             </div>
             <div class="meta-item">
               <span class="meta-label">Género</span>
@@ -671,6 +680,8 @@ async function mostrarDetalles(id) {
               ${esFavorito ? '❌ Eliminar de Favoritos' : '❤️ Agregar a Favoritos'}
             </button>
           </div>
+
+          ${reviewsHtml}
         </div>
       </div>
     `;
@@ -680,6 +691,62 @@ async function mostrarDetalles(id) {
   } catch (error) {
     console.error('Error al obtener detalles:', error);
     alert('Error al cargar los detalles de la película');
+  }
+}
+
+function renderReviewsSection(movieId, reviews) {
+  const reviewItems = reviews.map(r => {
+    const canDelete = currentUser && Number(currentUser.id) === Number(r.user_id);
+    return `
+      <div style="padding:0.75rem;border:1px solid #e4e4e4;border-radius:8px;margin-bottom:0.75rem;">
+        <div style="display:flex;justify-content:space-between;gap:1rem;align-items:center;">
+          <strong>${r.username || 'Usuario'}</strong>
+          <span>⭐ ${r.rating}/10</span>
+        </div>
+        <p style="margin:0.5rem 0 0 0;">${r.review_text || 'Sin comentario'}</p>
+        ${canDelete ? `<button class="btn btn-small btn-danger" style="margin-top:0.5rem;" onclick="eliminarComentario(${r.id}, ${movieId})">Eliminar mi comentario</button>` : ''}
+      </div>
+    `;
+  }).join('');
+
+  return `
+    <h3 style="color: #667eea; margin-top: 1.5rem; margin-bottom: 0.8rem;">Comentarios</h3>
+    <form onsubmit="enviarComentario(event, ${movieId})" style="margin-bottom:1rem;display:grid;gap:0.5rem;">
+      <label for="review-rating">Tu nota (1-10)</label>
+      <input id="review-rating" type="number" min="1" max="10" required>
+      <label for="review-text">Tu comentario</label>
+      <textarea id="review-text" rows="3" placeholder="¿Qué te pareció la película?"></textarea>
+      <button type="submit" class="btn btn-primary">Publicar comentario</button>
+    </form>
+    <div>
+      ${reviewItems || '<p>Aún no hay comentarios para esta película.</p>'}
+    </div>
+  `;
+}
+
+async function enviarComentario(event, movieId) {
+  event.preventDefault();
+  const ratingInput = document.getElementById('review-rating');
+  const textInput = document.getElementById('review-text');
+  if (!ratingInput) return;
+
+  const payload = {
+    movie_id: movieId,
+    rating: Number(ratingInput.value),
+    review_text: textInput ? textInput.value : '',
+  };
+
+  const response = await fetchAPI(`${API_URL}/reviews`, 'POST', payload, authToken);
+  if (response) {
+    await mostrarDetalles(movieId);
+  }
+}
+
+async function eliminarComentario(reviewId, movieId) {
+  if (!confirm('¿Seguro que quieres eliminar tu comentario?')) return;
+  const response = await fetchAPI(`${API_URL}/reviews/${reviewId}`, 'DELETE', null, authToken);
+  if (response) {
+    await mostrarDetalles(movieId);
   }
 }
 

@@ -109,6 +109,19 @@ class Favorites(db.Model):
     created_at = db.Column(db.DateTime, default=db.func.current_timestamp())
 
 
+class Review(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    movie_id = db.Column(db.Integer, db.ForeignKey('movie.id'), nullable=False)
+    rating = db.Column(db.Integer, nullable=False)
+    review_text = db.Column(db.Text, nullable=True)
+    created_at = db.Column(db.DateTime(timezone=True), default=db.func.current_timestamp())
+    updated_at = db.Column(db.DateTime(timezone=True), default=db.func.current_timestamp(), onupdate=db.func.current_timestamp())
+
+    user = db.relationship('User', backref='reviews')
+    movie = db.relationship('Movie', backref='reviews')
+
+
 class SyncState(db.Model):
     key = db.Column(db.String(100), primary_key=True)
     value = db.Column(db.String(255), nullable=False)
@@ -951,6 +964,154 @@ def sincronizar_peliculas_api():
             'detalle': sync_result,
         }), 502
     except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+# --- API: REVIEWS / COMENTARIOS ---
+@app.route('/api/peliculas/<int:movie_id>/reviews', methods=['GET'])
+@cors_enabled
+def obtener_reviews_pelicula(movie_id):
+    try:
+        pelicula = db.session.get(Movie, movie_id)
+        if not pelicula:
+            return jsonify({'error': 'Película no encontrada'}), 404
+
+        reviews = Review.query.filter_by(movie_id=movie_id).order_by(Review.created_at.desc()).all()
+        return jsonify([{
+            'id': r.id,
+            'user_id': r.user_id,
+            'username': r.user.username,
+            'movie_id': r.movie_id,
+            'rating': r.rating,
+            'review_text': r.review_text,
+            'created_at': r.created_at.isoformat() if r.created_at else None,
+            'updated_at': r.updated_at.isoformat() if r.updated_at else None,
+        } for r in reviews]), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/peliculas/<int:movie_id>/average-rating', methods=['GET'])
+@cors_enabled
+def obtener_rating_promedio(movie_id):
+    try:
+        from sqlalchemy import func
+
+        pelicula = db.session.get(Movie, movie_id)
+        if not pelicula:
+            return jsonify({'error': 'Película no encontrada'}), 404
+
+        resultado = db.session.query(
+            func.avg(Review.rating).label('average_rating'),
+            func.count(Review.id).label('total_reviews')
+        ).filter(Review.movie_id == movie_id).first()
+
+        average_rating = float(resultado.average_rating) if resultado.average_rating else 0
+        total_reviews = resultado.total_reviews or 0
+
+        return jsonify({
+            'movie_id': movie_id,
+            'average_rating': round(average_rating, 2),
+            'total_reviews': total_reviews,
+        }), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/reviews', methods=['POST'])
+@cors_enabled
+def crear_review():
+    try:
+        auth_header = request.headers.get('Authorization')
+        if not auth_header or not auth_header.startswith('Bearer '):
+            return jsonify({'error': 'Token requerido'}), 401
+
+        token = auth_header.split(' ')[1]
+        try:
+            user_id = int(token.split('_')[1])
+        except Exception:
+            return jsonify({'error': 'Token inválido'}), 401
+
+        datos = request.get_json()
+        if not datos:
+            return jsonify({'error': 'No se proporcionaron datos'}), 400
+
+        movie_id = datos.get('movie_id')
+        rating = datos.get('rating')
+        review_text = datos.get('review_text', '')
+
+        if not movie_id or rating is None:
+            return jsonify({'error': 'movie_id y rating son requeridos'}), 400
+
+        try:
+            rating = int(rating)
+            if rating < 1 or rating > 10:
+                return jsonify({'error': 'El rating debe estar entre 1 y 10'}), 400
+        except (ValueError, TypeError):
+            return jsonify({'error': 'El rating debe ser un número entre 1 y 10'}), 400
+
+        movie = db.session.get(Movie, movie_id)
+        if not movie:
+            return jsonify({'error': 'Película no encontrada'}), 404
+
+        existing_review = Review.query.filter_by(user_id=user_id, movie_id=movie_id).first()
+        if existing_review:
+            return jsonify({'error': 'Ya tienes un comentario para esta película'}), 409
+
+        review = Review(
+            user_id=user_id,
+            movie_id=movie_id,
+            rating=rating,
+            review_text=review_text.strip() if review_text else None,
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
+        )
+        db.session.add(review)
+        db.session.commit()
+
+        return jsonify({
+            'mensaje': 'Comentario creado exitosamente',
+            'review': {
+                'id': review.id,
+                'user_id': review.user_id,
+                'movie_id': review.movie_id,
+                'rating': review.rating,
+                'review_text': review.review_text,
+                'created_at': review.created_at.isoformat() if review.created_at else None,
+                'updated_at': review.updated_at.isoformat() if review.updated_at else None,
+            }
+        }), 201
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/reviews/<int:review_id>', methods=['DELETE'])
+@cors_enabled
+def eliminar_review(review_id):
+    try:
+        auth_header = request.headers.get('Authorization')
+        if not auth_header or not auth_header.startswith('Bearer '):
+            return jsonify({'error': 'Token requerido'}), 401
+
+        token = auth_header.split(' ')[1]
+        try:
+            user_id = int(token.split('_')[1])
+        except Exception:
+            return jsonify({'error': 'Token inválido'}), 401
+
+        review = db.session.get(Review, review_id)
+        if not review:
+            return jsonify({'error': 'Comentario no encontrado'}), 404
+
+        if review.user_id != user_id:
+            return jsonify({'error': 'No tienes permiso para eliminar este comentario'}), 403
+
+        db.session.delete(review)
+        db.session.commit()
+        return jsonify({'mensaje': 'Comentario eliminado exitosamente'}), 200
+    except Exception as e:
+        db.session.rollback()
         return jsonify({'error': str(e)}), 500
 
 # --- API: FAVORITOS ---
