@@ -19,7 +19,11 @@ const routes = {
 };
 // Variable global para seguir el rastro de los favoritos en el catálogo
 let userFavIds = [];
+let userFavSeriesIds = [];
 let currentRoute = routes.inicio;
+let currentContentType = 'peliculas';
+let peliculasData = [];
+let seriesData = [];
 
 // ==================== INICIALIZACIÓN ====================
 document.addEventListener('DOMContentLoaded', () => {
@@ -197,22 +201,94 @@ function renderRegistro() {
 // ==================== RENDERIZACIÓN: PELÍCULAS ====================
 async function renderPeliculas() {
   const content = document.getElementById('content');
-  content.innerHTML = `<div class="container"><h2>Nuestro Catálogo</h2><p id="catalogo-resumen" style="margin-bottom:1rem;color:#555;"></p><div id="peliculas-container" class="peliculas-grid"></div></div>`;
+  content.innerHTML = `
+    <div class="container">
+      <h2>Nuestro Catálogo</h2>
+      <p id="catalogo-resumen" style="margin-bottom:1rem;color:#555;"></p>
+      <div class="admin-tabs" style="margin-bottom:1rem;">
+        <button class="tab-btn active" id="tab-peliculas" onclick="switchContentType('peliculas')">Películas</button>
+        <button class="tab-btn" id="tab-series" onclick="switchContentType('series')">Series</button>
+      </div>
+      <div id="content-type-container"></div>
+    </div>`;
 
-  // 1. Obtener favoritos primero para saber qué marcar
-  const favoritos = await fetchAPI(`${API_URL}/favoritos`, 'GET', null, authToken);
-  userFavIds = favoritos ? favoritos.map(f => f.id) : [];
+  const favoritosPeliculas = await fetchAPI(`${API_URL}/favoritos`, 'GET', null, authToken);
+  const favoritosSeries = await fetchAPI(`${API_URL}/series-favoritos`, 'GET', null, authToken);
 
-  // 2. Obtener todas las películas
-  const peliculas = await fetchAPI(`${API_URL}/peliculas`, 'GET');
-  
-  if (peliculas) {
-    const resumen = document.getElementById('catalogo-resumen');
-    if (resumen) {
-      resumen.textContent = `Mostrando ${peliculas.length} películas en catálogo.`;
-    }
-    renderPeliculasGrid(peliculas); 
+  userFavIds = favoritosPeliculas ? favoritosPeliculas.map(f => f.id) : [];
+  userFavSeriesIds = favoritosSeries ? favoritosSeries.map(s => s.id) : [];
+
+  peliculasData = await fetchAPI(`${API_URL}/peliculas`, 'GET');
+  seriesData = await fetchAPI(`${API_URL}/series`, 'GET');
+
+  currentContentType = 'peliculas';
+  switchContentType('peliculas');
+}
+
+function switchContentType(type) {
+  currentContentType = type;
+
+  const tabPeliculas = document.getElementById('tab-peliculas');
+  const tabSeries = document.getElementById('tab-series');
+  if (tabPeliculas) tabPeliculas.classList.toggle('active', type === 'peliculas');
+  if (tabSeries) tabSeries.classList.toggle('active', type === 'series');
+
+  const resumen = document.getElementById('catalogo-resumen');
+  if (resumen) {
+    const total = type === 'peliculas' ? (peliculasData ? peliculasData.length : 0) : (seriesData ? seriesData.length : 0);
+    resumen.textContent = `Mostrando ${total} ${type}.`;
   }
+
+  if (type === 'peliculas') {
+    renderPeliculasSection();
+  } else {
+    renderSeriesSection();
+  }
+}
+
+function renderPeliculasSection() {
+  const container = document.getElementById('content-type-container');
+  if (!container) return;
+
+  container.innerHTML = '<div id="peliculas-container" class="peliculas-grid"></div>';
+  renderPeliculasGrid(peliculasData || [], 'peliculas-container');
+}
+
+function renderSeriesSection() {
+  const container = document.getElementById('content-type-container');
+  if (!container) return;
+
+  if (!seriesData || seriesData.length === 0) {
+    container.innerHTML = '<p>No hay series disponibles.</p>';
+    return;
+  }
+
+  container.innerHTML = '<div id="series-container" class="peliculas-grid"></div>';
+  const seriesContainer = document.getElementById('series-container');
+  if (!seriesContainer) return;
+
+  seriesData.forEach(s => {
+    const card = document.createElement('div');
+    const isFav = userFavSeriesIds.includes(s.id);
+    card.className = `pelicula-card ${isFav ? 'card-highlight' : ''}`;
+    card.style.cursor = 'pointer';
+    card.style.border = '2px solid #ff6b9d';
+    card.onclick = () => mostrarDetalles('serie', s.id);
+    card.innerHTML = `
+      <div style="position:relative;">
+        <img src="${s.poster_url}" alt="${s.title}" style="cursor:pointer;">
+        <span style="position:absolute; top:8px; right:8px; background:#ff6b9d; color:white; padding:0.3rem 0.6rem; border-radius:4px; font-size:0.8rem; font-weight:bold;">SERIE</span>
+      </div>
+      <div class="card-content">
+        <h3>${s.title} ${isFav ? '⭐' : ''}</h3>
+        <div class="card-buttons">
+          <button class="btn ${isFav ? 'btn-active-fav' : 'btn-favorite'}" onclick="event.stopPropagation(); toggleFavorito('serie', ${s.id})">
+            ${isFav ? '❤️ Quitar' : '🤍 Favorito'}
+          </button>
+        </div>
+      </div>`;
+    seriesContainer.appendChild(card);
+  });
 }
 
 function renderPeliculasGrid(peliculas, containerId = 'peliculas-container') {
@@ -578,18 +654,29 @@ async function eliminarPelicula(id) {
 }
 
 // ==================== FUNCIONES: FAVORITOS ====================
-async function toggleFavorito(movieId) {
+async function toggleFavorito(typeOrMovieId, maybeItemId = null) {
+  const type = maybeItemId === null ? 'pelicula' : typeOrMovieId;
+  const itemId = maybeItemId === null ? typeOrMovieId : maybeItemId;
+
   if (!authToken) {
     alert('Necesitas iniciar sesión para agregar favoritos.');
     navigateTo(routes.login);
     return;
   }
 
-  const response = await fetchAPI(`${API_URL}/favoritos`, 'POST', { movie_id: movieId }, authToken);
+  const endpoint = type === 'serie' ? '/series-favoritos' : '/favoritos';
+  const payload = type === 'serie' ? { series_id: itemId } : { movie_id: itemId };
+  const response = await fetchAPI(`${API_URL}${endpoint}`, 'POST', payload, authToken);
   
   if (response) {
-    const mensaje = response.mensaje || 'Película añadida a favoritos.';
+    const mensaje = response.mensaje || 'Elemento añadido a favoritos.';
     alert(mensaje);
+
+    if (type === 'serie') {
+      if (!userFavSeriesIds.includes(itemId)) userFavSeriesIds.push(itemId);
+    } else {
+      if (!userFavIds.includes(itemId)) userFavIds.push(itemId);
+    }
 
     // Si estamos en la página de favoritos, actualizar la vista
     if (currentRoute === routes.favoritos) {
@@ -597,7 +684,9 @@ async function toggleFavorito(movieId) {
     }
 
     // Actualizar el botón visualmente
-    updateFavoriteButton(movieId);
+    if (type === 'pelicula') {
+      updateFavoriteButton(itemId);
+    }
   }
 }
 
@@ -616,7 +705,18 @@ function updateFavoriteButton(movieId) {
 }
 
 // ==================== FUNCIONES: UTILIDADES ====================
-async function mostrarDetalles(id) {
+async function mostrarDetalles(typeOrId, maybeId = null) {
+  const type = maybeId === null ? 'pelicula' : typeOrId;
+  const id = maybeId === null ? typeOrId : maybeId;
+
+  if (type === 'serie') {
+    return mostrarDetallesSerie(id);
+  }
+
+  return mostrarDetallesPelicula(id);
+}
+
+async function mostrarDetallesPelicula(id) {
   try {
     console.log(`Obteniendo detalles de película ${id}`);
     const pelicula = await fetchAPI(`${API_URL}/peliculas/${id}`, 'GET');
@@ -691,6 +791,63 @@ async function mostrarDetalles(id) {
   } catch (error) {
     console.error('Error al obtener detalles:', error);
     alert('Error al cargar los detalles de la película');
+  }
+}
+
+async function mostrarDetallesSerie(id) {
+  try {
+    const serie = await fetchAPI(`${API_URL}/series/${id}`, 'GET');
+    if (!serie || serie.error) {
+      alert('No se pudieron obtener los detalles de la serie');
+      return;
+    }
+
+    const esFavorito = userFavSeriesIds.includes(id);
+    const posterUrl = serie.poster_url || 'https://via.placeholder.com/300x450?text=No+Image';
+    const episodiosPorTemporada = serie.episodes_by_season || {};
+
+    const detailsHTML = `
+      <div class="movie-detail">
+        <div class="movie-poster">
+          <img src="${posterUrl}" alt="${serie.title}" onerror="this.src='https://via.placeholder.com/300x450?text=No+Image'">
+        </div>
+        <div class="movie-info">
+          <h2>${serie.title} <span style="color:#ff6b9d; font-size:0.8em;">SERIE</span></h2>
+          <div class="movie-meta">
+            <div class="meta-item"><span class="meta-label">Género</span><span class="meta-value">${serie.genre || 'No especificado'}</span></div>
+            <div class="meta-item"><span class="meta-label">Creador</span><span class="meta-value">${serie.director || 'No especificado'}</span></div>
+            <div class="meta-item"><span class="meta-label">Año de Estreno</span><span class="meta-value">${serie.release_date ? serie.release_date.slice(0, 4) : 'No especificado'}</span></div>
+          </div>
+          <h3 style="color: #667eea; margin-top: 1.5rem; margin-bottom: 0.8rem;">Sinopsis</h3>
+          <div class="movie-description">${serie.description || 'No hay descripción disponible'}</div>
+          <div class="movie-controls">
+            <button class="btn btn-primary" onclick="cerrarDetalles()">Cerrar</button>
+            <button class="btn ${esFavorito ? 'btn-danger' : 'btn-favorite'}" onclick="toggleFavorito('serie', ${serie.id})">
+              ${esFavorito ? '❌ Eliminar de Favoritos' : '❤️ Agregar a Favoritos'}
+            </button>
+          </div>
+        </div>
+      </div>
+      <div style="margin-top: 2rem; padding: 1.5rem; background: rgba(255, 107, 157, 0.1); border-radius: 8px;">
+        <h3 style="color:#ff6b9d; margin-bottom:1rem;">Episodios</h3>
+        ${Object.keys(episodiosPorTemporada).length === 0 ? '<p>No hay episodios disponibles.</p>' : Object.keys(episodiosPorTemporada).sort((a, b) => a - b).map(season => `
+          <div style="margin-bottom:1rem;">
+            <h4 style="border-bottom:2px solid #ff6b9d; padding-bottom:0.4rem;">Temporada ${season}</h4>
+            ${episodiosPorTemporada[season].map(ep => `
+              <div style="background:white; border-left:4px solid #ff6b9d; padding:0.8rem; margin:0.6rem 0; border-radius:6px;">
+                <strong>Cap. ${ep.episode_number}: ${ep.title}</strong>
+                <div style="font-size:0.9rem; color:#666; margin-top:0.3rem;">${ep.description || ''}</div>
+              </div>
+            `).join('')}
+          </div>
+        `).join('')}
+      </div>`;
+
+    document.getElementById('movieDetails').innerHTML = detailsHTML;
+    document.getElementById('movieModal').classList.add('active');
+  } catch (error) {
+    console.error('Error al obtener detalles de serie:', error);
+    alert('Error al cargar los detalles de la serie');
   }
 }
 
