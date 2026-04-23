@@ -21,6 +21,9 @@ const routes = {
 let userFavIds = [];
 let userFavSeriesIds = [];
 let currentRoute = routes.inicio;
+let currentContentType = 'peliculas'; // 'peliculas' o 'series'
+let peliculasData = [];
+let seriesData = [];
 
 // ==================== INICIALIZACIÓN ====================
 document.addEventListener('DOMContentLoaded', () => {
@@ -108,7 +111,7 @@ function renderNavigation() {
   if (currentUser) {
     // Usuario autenticado
     menu.innerHTML = `
-      <li><a href="#" onclick="navigateTo('${routes.peliculas}'); return false;">Películas</a></li>
+      <li><a href="#" onclick="navigateTo('${routes.peliculas}'); return false;">Catálogo</a></li>
       <li><a href="#" onclick="navigateTo('${routes.favoritos}'); return false;">❤️ Favoritos</a></li>
       ${currentUser.role === 'admin' ? `<li><a href="#" onclick="navigateTo('${routes.admin}'); return false;">⚙️ Admin</a></li>` : ''}
       <li><span class="user-info">👤 ${currentUser.username}</span></li>
@@ -198,7 +201,16 @@ function renderRegistro() {
 // ==================== RENDERIZACIÓN: PELÍCULAS ====================
 async function renderPeliculas() {
   const content = document.getElementById('content');
-  content.innerHTML = `<div class="container"><h2>Nuestro Catálogo</h2><div id="peliculas-container" class="peliculas-grid"></div></div>`;
+  content.innerHTML = `
+    <div class="container">
+      <h2>Nuestro Catálogo</h2>
+      <div class="catalog-tabs">
+        <button class="tab-btn active" id="tab-peliculas" onclick="switchContentType('peliculas')">🎬 Películas</button>
+        <button class="tab-btn" id="tab-series" onclick="switchContentType('series')">📺 Series</button>
+      </div>
+      <div id="content-type-container"></div>
+    </div>
+  `;
 
   // 1. Obtener favoritos (películas y series)
   const favoritosPeliculas = await fetchAPI(`${API_URL}/favoritos`, 'GET', null, authToken);
@@ -208,29 +220,60 @@ async function renderPeliculas() {
   userFavSeriesIds = favoritosSeries ? favoritosSeries.map(s => s.id) : [];
 
   // 2. Obtener películas y series
-  const peliculas = await fetchAPI(`${API_URL}/peliculas`, 'GET');
-  const series = await fetchAPI(`${API_URL}/series`, 'GET');
+  peliculasData = await fetchAPI(`${API_URL}/peliculas`, 'GET');
+  seriesData = await fetchAPI(`${API_URL}/series`, 'GET');
   
-  // 3. Combinar y renderizar
+  // 3. Mostrar contenido por defecto (películas)
+  currentContentType = 'peliculas';
+  switchContentType('peliculas');
+}
+
+async function switchContentType(type) {
+  currentContentType = type;
+  
+  // Actualizar botones activos
+  document.getElementById('tab-peliculas').classList.toggle('active', type === 'peliculas');
+  document.getElementById('tab-series').classList.toggle('active', type === 'series');
+  
+  const container = document.getElementById('content-type-container');
+  
+  if (type === 'peliculas') {
+    renderPeliculasSection();
+  } else if (type === 'series') {
+    renderSeriesSection();
+  }
+}
+
+function renderPeliculasSection() {
   let contenido = '';
   
-  if (peliculas && peliculas.length > 0) {
-    contenido += '<div><h3>Películas</h3><div class="peliculas-grid">';
-    peliculas.forEach(p => {
+  if (peliculasData && peliculasData.length > 0) {
+    contenido = '<div class="peliculas-grid">';
+    peliculasData.forEach(p => {
       contenido += renderPeliculaCard(p, 'pelicula');
     });
-    contenido += '</div></div>';
+    contenido += '</div>';
+  } else {
+    contenido = '<p>No hay películas disponibles.</p>';
   }
   
-  if (series && series.length > 0) {
-    contenido += '<div style="margin-top: 2rem;"><h3>Series</h3><div class="peliculas-grid">';
-    series.forEach(s => {
+  document.getElementById('content-type-container').innerHTML = contenido;
+}
+
+function renderSeriesSection() {
+  let contenido = '';
+  
+  if (seriesData && seriesData.length > 0) {
+    contenido = '<div class="peliculas-grid">';
+    seriesData.forEach(s => {
       contenido += renderSerieCard(s);
     });
-    contenido += '</div></div>';
+    contenido += '</div>';
+  } else {
+    contenido = '<p>No hay series disponibles.</p>';
   }
   
-  document.getElementById('peliculas-container').innerHTML = contenido;
+  document.getElementById('content-type-container').innerHTML = contenido;
 }
 
 function renderPeliculaCard(p, type = 'pelicula') {
