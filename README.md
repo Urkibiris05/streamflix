@@ -99,6 +99,8 @@ python app.py
 
 Al iniciar, `app.py` creará `streamflix.db` y, si no hay datos, ejecutará `seed.sql` automáticamente para poblar los usuarios y las películas de ejemplo.
 
+Además, el backend sincroniza películas desde una API externa de forma incremental (upsert) según un intervalo configurable, manteniendo la arquitectura SPA + API REST.
+
 La aplicación estará disponible en: **http://localhost:5000**
 
 > No es necesario servir el frontend por separado. Flask ya entrega `index.html` y `app.js`.
@@ -123,6 +125,12 @@ La aplicación estará disponible en: **http://localhost:5000**
 | **POST** | `/api/peliculas` | Crear película | ✅ Admin | `{title, description, director, ...}` |
 | **PUT** | `/api/peliculas/<id>` | Actualizar película | ✅ Admin | `{title, description, ...}` |
 | **DELETE** | `/api/peliculas/<id>` | Eliminar película | ✅ Admin | - |
+
+### Sincronización de Catálogo (API externa)
+
+| Método | Ruta | Descripción | Autenticación |
+|--------|------|-------------|---|
+| **POST** | `/api/sync/peliculas` | Forzar sincronización externa | ✅ Admin |
 
 ### Favoritos
 
@@ -246,6 +254,40 @@ El proyecto incluye usuarios iniciales en `seed.sql`:
   - Puede ver películas, iniciar sesión y gestionar favoritos.
 
 > Si el archivo `seed.sql` no está disponible, `app.py` crea un usuario `demo` con rol `admin` como backup.
+
+---
+
+## 🔄 SINCRONIZACIÓN AUTOMÁTICA DE PELÍCULAS
+
+El backend descarga películas desde una API externa y las inserta/actualiza en SQLite sin duplicados.
+
+La aplicación carga automáticamente un archivo `.env` ubicado en la raíz del proyecto, así que puedes definir ahí `TMDB_API_KEY` y el resto de variables.
+
+Variables de entorno opcionales:
+
+- `MOVIES_PROVIDER_SOURCE` (default: `tmdb`)
+- `TMDB_BASE_URL` (default: `https://api.themoviedb.org/3`)
+- `TMDB_API_KEY` (required para usar TMDB)
+- `TMDB_LANGUAGE` (default: `es-ES`)
+- `TMDB_MAX_PAGES` (default: `3`)
+- `TMDB_IMAGE_BASE_URL` (default: `https://image.tmdb.org/t/p/w500`)
+- `OMDB_PROVIDER_URL` (default: `https://www.omdbapi.com/`)
+- `OMDB_API_KEY` (default: `thewdb`)
+- `OMDB_RECENT_YEARS` (default: `3`)
+- `OMDB_MAX_PAGES_PER_QUERY` (default: `2`)
+- `OMDB_MAX_TITLES` (default: `120`)
+- `GHIBLI_PROVIDER_URL` (default: `https://ghibliapi.vercel.app/films`)
+- `MOVIES_SYNC_INTERVAL_MINUTES` (default: `60`)
+- `MOVIES_SYNC_MAX_PAGES` (default: `2`)
+- `MOVIES_SYNC_PAGE_LIMIT` (default: `50`)
+- `MOVIES_PROVIDER_TIMEOUT_SECONDS` (default: `8`)
+- `MOVIES_AUTO_SYNC_ON_READ` (default: `true`)
+
+Con `MOVIES_AUTO_SYNC_ON_READ=true`, cada `GET /api/peliculas` intenta sincronizar si ya venció el intervalo configurado.
+
+Si `TMDB_API_KEY` no está configurada o TMDB no responde, el backend aplica fallback automático a OMDb para mantener el catálogo actualizado.
+
+Consulta `.env.example` para ver un ejemplo completo de configuración.
 
 ---
 

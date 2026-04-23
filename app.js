@@ -197,7 +197,7 @@ function renderRegistro() {
 // ==================== RENDERIZACIÓN: PELÍCULAS ====================
 async function renderPeliculas() {
   const content = document.getElementById('content');
-  content.innerHTML = `<div class="container"><h2>Nuestro Catálogo</h2><div id="peliculas-container" class="peliculas-grid"></div></div>`;
+  content.innerHTML = `<div class="container"><h2>Nuestro Catálogo</h2><p id="catalogo-resumen" style="margin-bottom:1rem;color:#555;"></p><div id="peliculas-container" class="peliculas-grid"></div></div>`;
 
   // 1. Obtener favoritos primero para saber qué marcar
   const favoritos = await fetchAPI(`${API_URL}/favoritos`, 'GET', null, authToken);
@@ -207,6 +207,10 @@ async function renderPeliculas() {
   const peliculas = await fetchAPI(`${API_URL}/peliculas`, 'GET');
   
   if (peliculas) {
+    const resumen = document.getElementById('catalogo-resumen');
+    if (resumen) {
+      resumen.textContent = `Mostrando ${peliculas.length} películas en catálogo.`;
+    }
     renderPeliculasGrid(peliculas); 
   }
 }
@@ -272,14 +276,22 @@ async function switchTab(tab) {
   const adminContent = document.getElementById('admin-content');
   
   if (tab === 'lista') {
-    adminContent.innerHTML = '<h3>Lista de Películas</h3><div id="admin-movies-list"></div>';
+    adminContent.innerHTML = `
+      <div style="display:flex; justify-content:space-between; align-items:center; gap:1rem; flex-wrap:wrap;">
+        <h3>Lista de Películas</h3>
+        <button class="btn btn-primary" onclick="sincronizarPeliculasAPI()">Actualizar desde API externa</button>
+      </div>
+      <div id="sync-result" style="margin-top:0.75rem; color:#555;"></div>
+      <div id="admin-movies-list"></div>
+    `;
     const peliculas = await fetchAPI(`${API_URL}/peliculas`, 'GET');
     
-    let html = '<table class="admin-table"><thead><tr><th>ID</th><th>Título</th><th>Género</th><th>Acciones</th></tr></thead><tbody>';
+    let html = '<table class="admin-table"><thead><tr><th>DB_ID</th><th>TMDB_ID</th><th>Título</th><th>Género</th><th>Acciones</th></tr></thead><tbody>';
     peliculas.forEach(p => {
       html += `
         <tr>
-          <td>${p.id}</td>
+          <td style="font-size:0.85rem;color:#666;">${p.id}</td>
+          <td style="font-size:0.85rem;color:#666;">${p.external_id || '—'}</td>
           <td>${p.title}</td>
           <td>${p.genre || 'N/A'}</td>
           <td>
@@ -309,6 +321,32 @@ async function switchTab(tab) {
       <div id="create-result" class="create-result"></div>
     `;
   }
+}
+
+async function sincronizarPeliculasAPI() {
+  const syncResult = document.getElementById('sync-result');
+  if (syncResult) {
+    syncResult.textContent = 'Sincronizando...';
+  }
+
+  const response = await fetchAPI(`${API_URL}/sync/peliculas`, 'POST', {}, authToken);
+  if (!response) {
+    if (syncResult) {
+      syncResult.textContent = 'No se pudo completar la sincronización.';
+    }
+    return;
+  }
+
+  const created = response.resultado?.created ?? 0;
+  const updated = response.resultado?.updated ?? 0;
+  const processed = response.resultado?.processed ?? 0;
+  const totalMovies = response.resultado?.total_movies;
+  if (syncResult) {
+    const totalText = Number.isFinite(totalMovies) ? ` Catálogo actual en BD: ${totalMovies}.` : '';
+    syncResult.textContent = `Sincronización completada. Procesadas: ${processed}, nuevas: ${created}, actualizadas: ${updated}.${totalText}`;
+  }
+
+  await switchTab('lista');
 }
 
 // ==================== RENDERIZACIÓN: FAVORITOS ====================

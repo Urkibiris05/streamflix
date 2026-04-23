@@ -1,12 +1,44 @@
 import os
+import unicodedata
+import requests
 from flask import Flask, request, jsonify, send_from_directory, make_response
 from flask_sqlalchemy import SQLAlchemy
 from bcrypt import hashpw, gensalt, checkpw
-from sqlalchemy import text
+from sqlalchemy import text, or_
 from datetime import datetime, timezone
 
 # ==================== CONFIGURACIÓN ====================
 basedir = os.path.abspath(os.path.dirname(__file__))
+
+
+def _load_env_file(env_path):
+    if not os.path.exists(env_path):
+        return
+
+    with open(env_path, 'r', encoding='utf-8') as env_file:
+        for raw_line in env_file:
+            line = raw_line.strip()
+            if not line or line.startswith('#') or '=' not in line:
+                continue
+
+            if line.startswith('export '):
+                line = line[len('export '):].strip()
+
+            key, value = line.split('=', 1)
+            key = key.strip()
+            value = value.strip()
+
+            # Soporta comentarios inline: KEY=value # comentario
+            if value and value[0] not in ('"', "'") and ' #' in value:
+                value = value.split(' #', 1)[0].strip()
+
+            value = value.strip('"').strip("'")
+
+            if key and key not in os.environ:
+                os.environ[key] = value
+
+
+_load_env_file(os.path.join(basedir, '.env'))
 app = Flask(__name__, static_url_path='', static_folder='.')
 app.config['SECRET_KEY'] = 'tu_clave_secreta'
 
@@ -14,6 +46,31 @@ app.config['SECRET_KEY'] = 'tu_clave_secreta'
 app.config['SQLALCHEMY_DATABASE_URI'] = f"sqlite:///{os.path.join(basedir, 'streamflix.db')}"
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 db = SQLAlchemy(app)
+
+# ==================== CONFIGURACIÓN DE SINCRONIZACIÓN EXTERNA ====================
+MOVIES_PROVIDER_SOURCE = os.getenv('MOVIES_PROVIDER_SOURCE', 'tmdb')
+TMDB_BASE_URL = os.getenv('TMDB_BASE_URL', 'https://api.themoviedb.org/3')
+TMDB_API_KEY = os.getenv('TMDB_API_KEY', '')
+TMDB_LANGUAGE = os.getenv('TMDB_LANGUAGE', 'es-ES')
+TMDB_MAX_PAGES = int(os.getenv('TMDB_MAX_PAGES', '3'))
+TMDB_IMAGE_BASE_URL = os.getenv('TMDB_IMAGE_BASE_URL', 'https://image.tmdb.org/t/p/w500')
+OMDB_PROVIDER_URL = os.getenv('OMDB_PROVIDER_URL', 'https://www.omdbapi.com/')
+OMDB_API_KEY = os.getenv('OMDB_API_KEY', 'thewdb')
+OMDB_RECENT_YEARS = int(os.getenv('OMDB_RECENT_YEARS', '3'))
+OMDB_MAX_PAGES_PER_QUERY = int(os.getenv('OMDB_MAX_PAGES_PER_QUERY', '2'))
+OMDB_MAX_TITLES = int(os.getenv('OMDB_MAX_TITLES', '120'))
+GHIBLI_PROVIDER_URL = os.getenv('GHIBLI_PROVIDER_URL', 'https://ghibliapi.vercel.app/films')
+MOVIES_PROVIDER_TIMEOUT_SECONDS = int(os.getenv('MOVIES_PROVIDER_TIMEOUT_SECONDS', '8'))
+MOVIES_SYNC_INTERVAL_MINUTES = int(os.getenv('MOVIES_SYNC_INTERVAL_MINUTES', '60'))
+MOVIES_SYNC_MAX_PAGES = int(os.getenv('MOVIES_SYNC_MAX_PAGES', '2'))
+MOVIES_SYNC_PAGE_LIMIT = int(os.getenv('MOVIES_SYNC_PAGE_LIMIT', '50'))
+MOVIES_AUTO_SYNC_ON_READ = os.getenv('MOVIES_AUTO_SYNC_ON_READ', 'true').lower() == 'true'
+
+TITLE_ALIASES = {
+    'spirited away': 'spirited away',
+    'el viaje de chihiro': 'spirited away',
+    'sen to chihiro no kamikakushi': 'spirited away',
+}
 
 # ==================== MODELOS DE BASE DE DATOS ====================
 class User(db.Model):   
@@ -39,6 +96,8 @@ class Movie(db.Model):
     rating = db.Column(db.Float)
     poster_url = db.Column(db.String(500))
     video_url = db.Column(db.String(500))
+    external_id = db.Column(db.String(120), nullable=True)
+    source = db.Column(db.String(50), default='local')
     created_at = db.Column(db.DateTime(timezone=True), default=db.func.current_timestamp())
     updated_at = db.Column(db.DateTime(timezone=True), default=db.func.current_timestamp(), onupdate=db.func.current_timestamp())
 
@@ -49,42 +108,564 @@ class Favorites(db.Model):
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), primary_key=True)
     created_at = db.Column(db.DateTime, default=db.func.current_timestamp())
 
+
+class SyncState(db.Model):
+    key = db.Column(db.String(100), primary_key=True)
+    value = db.Column(db.String(255), nullable=False)
+    updated_at = db.Column(db.DateTime(timezone=True), default=db.func.current_timestamp(), onupdate=db.func.current_timestamp())
+
+
+def _now_utc():
+    return datetime.now(timezone.utc)
+
+
+def _normalize_title_key(title):
+    if not title:
+        return ''
+
+    text_value = title.strip().lower()
+    text_value = ''.join(
+        c for c in unicodedata.normalize('NFKD', text_value)
+        if not unicodedata.combining(c)
+    )
+    return ' '.join(text_value.split())
+
+
+def _canonical_title_key(title):
+    normalized = _normalize_title_key(title)
+    return TITLE_ALIASES.get(normalized, normalized)
+
+
+def _movie_data_score(movie):
+    fields = [
+        movie.description,
+        movie.director,
+        movie.genre,
+        movie.poster_url,
+        movie.video_url,
+        movie.rating,
+        movie.duration_minutes,
+        movie.external_id,
+    ]
+    return sum(1 for value in fields if value not in (None, ''))
+
+
+def ensure_schema_compatibility():
+    """Agregar columnas/índices faltantes en instalaciones existentes sin migraciones formales."""
+    with db.engine.begin() as conn:
+        movie_columns = {row[1] for row in conn.execute(text('PRAGMA table_info(movie)')).fetchall()}
+
+        if 'external_id' not in movie_columns:
+            conn.execute(text('ALTER TABLE movie ADD COLUMN external_id VARCHAR(120)'))
+        if 'source' not in movie_columns:
+            conn.execute(text("ALTER TABLE movie ADD COLUMN source VARCHAR(50) DEFAULT 'local'"))
+
+        conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS idx_movie_source_external_id ON movie (source, external_id)"))
+
+
+def _get_sync_state(key):
+    return db.session.get(SyncState, key)
+
+
+def _set_sync_state(key, value):
+    state = _get_sync_state(key)
+    if state:
+        state.value = value
+        state.updated_at = _now_utc()
+    else:
+        db.session.add(SyncState(key=key, value=value, updated_at=_now_utc()))
+
+
+def purge_non_tmdb_movies():
+    """Eliminar películas y favoritos que no provengan de TMDB."""
+    movies_to_delete = Movie.query.filter(
+        or_(
+            Movie.source != 'tmdb',
+            Movie.source.is_(None),
+            Movie.source == '',
+        )
+    ).all()
+    if not movies_to_delete:
+        return 0
+
+    movie_ids = [movie.id for movie in movies_to_delete]
+    Favorites.query.filter(Favorites.movie_id.in_(movie_ids)).delete(synchronize_session=False)
+    Movie.query.filter(Movie.id.in_(movie_ids)).delete(synchronize_session=False)
+    db.session.commit()
+    return len(movie_ids)
+
+
+def _bootstrap_default_users():
+    """Crear usuarios demo/admin si la tabla está vacía."""
+    if User.query.count() > 0:
+        return
+
+    demo_password_hash = hashpw('demo123'.encode('utf-8'), gensalt()).decode('utf-8')
+    users = [
+        User(username='admin', email='admin@example.com', password_hash=demo_password_hash, role='admin'),
+        User(username='demo', email='demo@example.com', password_hash=demo_password_hash, role='user'),
+    ]
+    db.session.add_all(users)
+    db.session.commit()
+
+
+def _find_existing_movie_for_merge(mapped):
+    if mapped.get('external_id'):
+        movie = Movie.query.filter_by(source=mapped['source'], external_id=mapped['external_id']).first()
+        if movie:
+            return movie
+
+    canonical_incoming = _canonical_title_key(mapped.get('title'))
+    if not canonical_incoming:
+        return None
+
+    candidate_query = Movie.query
+    if mapped.get('release_date'):
+        candidate_query = candidate_query.filter(Movie.release_date == mapped['release_date'])
+
+    candidates = candidate_query.all()
+    for candidate in candidates:
+        if _canonical_title_key(candidate.title) == canonical_incoming:
+            return candidate
+
+    return None
+
+
+def deduplicate_movies_by_aliases():
+    movies = Movie.query.all()
+    groups = {}
+
+    for movie in movies:
+        release_year = movie.release_date.year if movie.release_date else None
+        group_key = (_canonical_title_key(movie.title), release_year)
+        groups.setdefault(group_key, []).append(movie)
+
+    merged_count = 0
+    for _, group in groups.items():
+        if len(group) < 2:
+            continue
+
+        keeper = max(group, key=lambda m: (_movie_data_score(m), -m.id))
+        duplicates = [movie for movie in group if movie.id != keeper.id]
+
+        for duplicate in duplicates:
+            dup_favorites = Favorites.query.filter_by(movie_id=duplicate.id).all()
+            for fav in dup_favorites:
+                existing_fav = Favorites.query.filter_by(movie_id=keeper.id, user_id=fav.user_id).first()
+                if not existing_fav:
+                    db.session.add(Favorites(movie_id=keeper.id, user_id=fav.user_id, created_at=fav.created_at))
+                db.session.delete(fav)
+
+            db.session.delete(duplicate)
+            merged_count += 1
+
+    if merged_count > 0:
+        db.session.commit()
+
+    return merged_count
+
+
+def _should_sync_movies(force=False):
+    if force:
+        return True
+
+    state = _get_sync_state('movies_last_sync')
+    if not state:
+        return True
+
+    try:
+        last_sync = datetime.fromisoformat(state.value)
+    except ValueError:
+        return True
+
+    elapsed_seconds = (_now_utc() - last_sync).total_seconds()
+    return elapsed_seconds >= (MOVIES_SYNC_INTERVAL_MINUTES * 60)
+
+
+def _extract_provider_movies(payload):
+    # Ghibli devuelve lista directa. YTS devuelve objeto con data.movies.
+    if isinstance(payload, list):
+        return payload
+
+    return payload.get('data', {}).get('movies', [])
+
+
+def _parse_omdb_release_date(raw_date):
+    if not raw_date or raw_date == 'N/A':
+        return None
+
+    try:
+        return datetime.strptime(raw_date, '%d %b %Y').date()
+    except ValueError:
+        return None
+
+
+def _parse_omdb_runtime(runtime_text):
+    if not runtime_text or runtime_text == 'N/A':
+        return None
+
+    parts = runtime_text.split()
+    if not parts:
+        return None
+
+    try:
+        return int(parts[0])
+    except (ValueError, TypeError):
+        return None
+
+
+def _parse_omdb_rating(rating_text):
+    if not rating_text or rating_text == 'N/A':
+        return None
+
+    try:
+        return float(rating_text)
+    except (TypeError, ValueError):
+        return None
+
+
+def _parse_tmdb_release_date(raw_date):
+    if not raw_date:
+        return None
+
+    try:
+        return datetime.strptime(raw_date, '%Y-%m-%d').date()
+    except ValueError:
+        return None
+
+
+def _fetch_tmdb_movies():
+    if not TMDB_API_KEY:
+        raise ValueError('TMDB_API_KEY no configurada')
+
+    genre_response = requests.get(
+        f"{TMDB_BASE_URL}/genre/movie/list",
+        params={
+            'api_key': TMDB_API_KEY,
+            'language': TMDB_LANGUAGE,
+        },
+        timeout=MOVIES_PROVIDER_TIMEOUT_SECONDS,
+    )
+    genre_response.raise_for_status()
+    genre_payload = genre_response.json()
+    genre_map = {g['id']: g['name'] for g in genre_payload.get('genres', [])}
+
+    collected = []
+    seen_ids = set()
+    endpoints = ['now_playing', 'popular']
+
+    for endpoint in endpoints:
+        for page in range(1, TMDB_MAX_PAGES + 1):
+            response = requests.get(
+                f"{TMDB_BASE_URL}/movie/{endpoint}",
+                params={
+                    'api_key': TMDB_API_KEY,
+                    'language': TMDB_LANGUAGE,
+                    'page': page,
+                },
+                timeout=MOVIES_PROVIDER_TIMEOUT_SECONDS,
+            )
+            response.raise_for_status()
+            payload = response.json()
+
+            for movie in payload.get('results', []):
+                movie_id = movie.get('id')
+                if movie_id in seen_ids:
+                    continue
+
+                seen_ids.add(movie_id)
+                movie['genre_names'] = [genre_map.get(gid) for gid in movie.get('genre_ids', []) if genre_map.get(gid)]
+                collected.append(movie)
+
+    return collected
+
+
+def _fetch_omdb_movies():
+    current_year = datetime.now().year
+    years = [str(current_year - i) for i in range(OMDB_RECENT_YEARS)]
+
+    # Términos amplios para capturar catálogo variado y reciente
+    search_terms = ['action', 'drama', 'comedy', 'horror', 'thriller', 'adventure', 'romance', 'science']
+
+    imdb_ids = []
+    seen_ids = set()
+
+    for year in years:
+        for term in search_terms:
+            for page in range(1, OMDB_MAX_PAGES_PER_QUERY + 1):
+                response = requests.get(
+                    OMDB_PROVIDER_URL,
+                    params={
+                        'apikey': OMDB_API_KEY,
+                        's': term,
+                        'type': 'movie',
+                        'y': year,
+                        'page': page,
+                    },
+                    timeout=MOVIES_PROVIDER_TIMEOUT_SECONDS,
+                )
+                response.raise_for_status()
+                payload = response.json()
+
+                if payload.get('Response') != 'True':
+                    break
+
+                for item in payload.get('Search', []):
+                    imdb_id = item.get('imdbID')
+                    if imdb_id and imdb_id not in seen_ids:
+                        seen_ids.add(imdb_id)
+                        imdb_ids.append(imdb_id)
+
+                if len(imdb_ids) >= OMDB_MAX_TITLES:
+                    break
+
+            if len(imdb_ids) >= OMDB_MAX_TITLES:
+                break
+        if len(imdb_ids) >= OMDB_MAX_TITLES:
+            break
+
+    detailed_movies = []
+    for imdb_id in imdb_ids[:OMDB_MAX_TITLES]:
+        detail_response = requests.get(
+            OMDB_PROVIDER_URL,
+            params={
+                'apikey': OMDB_API_KEY,
+                'i': imdb_id,
+                'plot': 'short',
+            },
+            timeout=MOVIES_PROVIDER_TIMEOUT_SECONDS,
+        )
+        detail_response.raise_for_status()
+        detail_payload = detail_response.json()
+
+        if detail_payload.get('Response') == 'True':
+            detailed_movies.append(detail_payload)
+
+    return detailed_movies
+
+
+def _map_provider_movie(raw_movie, provider_source=None):
+    source = provider_source or MOVIES_PROVIDER_SOURCE
+
+    if source == 'tmdb':
+        title = raw_movie.get('title') or raw_movie.get('name')
+        if not title:
+            return None
+
+        genre_names = raw_movie.get('genre_names', [])
+        poster_path = raw_movie.get('poster_path')
+
+        return {
+            'external_id': str(raw_movie.get('id')) if raw_movie.get('id') is not None else None,
+            'source': source,
+            'title': title,
+            'description': raw_movie.get('overview') or None,
+            'director': None,
+            'genre': ', '.join(genre_names) if genre_names else None,
+            'release_date': _parse_tmdb_release_date(raw_movie.get('release_date')),
+            'duration_minutes': None,
+            'rating': float(raw_movie.get('vote_average')) if raw_movie.get('vote_average') is not None else None,
+            'poster_url': f"{TMDB_IMAGE_BASE_URL}{poster_path}" if poster_path else None,
+            'video_url': None,
+        }
+
+    if source == 'omdb':
+        title = raw_movie.get('Title')
+        if not title:
+            return None
+
+        imdb_id = raw_movie.get('imdbID')
+        release_date = _parse_omdb_release_date(raw_movie.get('Released'))
+        if not release_date:
+            year = raw_movie.get('Year')
+            if year and year.isdigit():
+                release_date = datetime(int(year), 1, 1).date()
+
+        return {
+            'external_id': imdb_id,
+            'source': source,
+            'title': title,
+            'description': raw_movie.get('Plot') if raw_movie.get('Plot') != 'N/A' else None,
+            'director': raw_movie.get('Director') if raw_movie.get('Director') != 'N/A' else None,
+            'genre': raw_movie.get('Genre') if raw_movie.get('Genre') != 'N/A' else None,
+            'release_date': release_date,
+            'duration_minutes': _parse_omdb_runtime(raw_movie.get('Runtime')),
+            'rating': _parse_omdb_rating(raw_movie.get('imdbRating')),
+            'poster_url': raw_movie.get('Poster') if raw_movie.get('Poster') != 'N/A' else None,
+            'video_url': f"https://www.imdb.com/title/{imdb_id}/" if imdb_id else None,
+        }
+
+    if source == 'ghibli':
+        release_date = None
+        year = raw_movie.get('release_date')
+        if year:
+            try:
+                release_date = datetime(int(year), 1, 1).date()
+            except (TypeError, ValueError):
+                release_date = None
+
+        title = raw_movie.get('title')
+        if not title:
+            return None
+
+        return {
+            'external_id': str(raw_movie.get('id')) if raw_movie.get('id') is not None else None,
+            'source': source,
+            'title': title,
+            'description': raw_movie.get('description') or None,
+            'director': raw_movie.get('director') or None,
+            'genre': 'Animacion',
+            'release_date': release_date,
+            'duration_minutes': int(raw_movie.get('running_time')) if str(raw_movie.get('running_time', '')).isdigit() else None,
+            'rating': None,
+            'poster_url': raw_movie.get('image') or None,
+            'video_url': raw_movie.get('url') or None,
+        }
+
+    # Mapeo YTS
+    title = raw_movie.get('title')
+    if not title:
+        return None
+
+    year = raw_movie.get('year')
+    release_date = None
+    if year:
+        try:
+            release_date = datetime(int(year), 1, 1).date()
+        except (TypeError, ValueError):
+            release_date = None
+
+    genres = raw_movie.get('genres') or []
+
+    return {
+        'external_id': str(raw_movie.get('id')) if raw_movie.get('id') is not None else None,
+        'source': source,
+        'title': title,
+        'description': raw_movie.get('description_full') or raw_movie.get('summary') or raw_movie.get('description_intro') or None,
+        'director': None,
+        'genre': ', '.join(genres) if genres else None,
+        'release_date': release_date,
+        'duration_minutes': raw_movie.get('runtime'),
+        'rating': raw_movie.get('rating'),
+        'poster_url': raw_movie.get('large_cover_image') or raw_movie.get('medium_cover_image') or None,
+        'video_url': raw_movie.get('url') or None,
+    }
+
+
+def sync_movies_from_api(force=False):
+    """Sincroniza películas desde API externa hacia la BD local con inserción/actualización incremental."""
+    if not _should_sync_movies(force=force):
+        return {'skipped': True, 'reason': 'sync_interval_not_reached'}
+
+    created = 0
+    updated = 0
+    processed = 0
+
+    try:
+        source_in_use = 'tmdb'
+        pages_to_process = [_fetch_tmdb_movies()]
+
+        for provider_movies in pages_to_process:
+            if not provider_movies:
+                continue
+
+            for raw_movie in provider_movies:
+                mapped = _map_provider_movie(raw_movie, provider_source=source_in_use)
+                if not mapped:
+                    continue
+
+                processed += 1
+
+                mapped['source'] = source_in_use
+
+                movie = _find_existing_movie_for_merge(mapped)
+
+                if movie:
+                    movie.title = mapped['title']
+                    movie.description = mapped['description']
+                    movie.director = mapped['director']
+                    movie.genre = mapped['genre']
+                    movie.release_date = mapped['release_date']
+                    movie.duration_minutes = mapped['duration_minutes']
+                    movie.rating = mapped['rating']
+                    movie.poster_url = mapped['poster_url']
+                    movie.video_url = mapped['video_url']
+                    movie.external_id = mapped['external_id']
+                    movie.source = mapped['source']
+                    movie.updated_at = _now_utc()
+                    updated += 1
+                else:
+                    db.session.add(Movie(
+                        title=mapped['title'],
+                        description=mapped['description'],
+                        director=mapped['director'],
+                        genre=mapped['genre'],
+                        release_date=mapped['release_date'],
+                        duration_minutes=mapped['duration_minutes'],
+                        rating=mapped['rating'],
+                        poster_url=mapped['poster_url'],
+                        video_url=mapped['video_url'],
+                        external_id=mapped['external_id'],
+                        source=mapped['source'],
+                        created_at=_now_utc(),
+                        updated_at=_now_utc(),
+                    ))
+                    created += 1
+
+        _set_sync_state('movies_last_sync', _now_utc().isoformat())
+        db.session.commit()
+
+        total_movies = Movie.query.count()
+        tmdb_movies = Movie.query.filter_by(source='tmdb').count()
+
+        return {
+            'ok': True,
+            'processed': processed,
+            'created': created,
+            'updated': updated,
+            'total_movies': total_movies,
+            'tmdb_movies': tmdb_movies,
+            'source': source_in_use,
+            'url': TMDB_BASE_URL,
+        }
+    except Exception as e:
+        db.session.rollback()
+        return {
+            'ok': False,
+            'error': str(e),
+            'source': 'tmdb',
+            'url': TMDB_BASE_URL,
+        }
+
 # ==================== FUNCIONES DE INICIALIZACIÓN ====================
 def init_db():
     """Inicializar base de datos y crear tablas"""
     with app.app_context():
         db.create_all()
+        ensure_schema_compatibility()
+
+        removed = purge_non_tmdb_movies()
+        if removed > 0:
+            print(f"Películas no-TMDB eliminadas de la BD: {removed}")
 
         # Ejecutar seed data si no hay datos
         if User.query.count() == 0 or Movie.query.count() == 0:
-            print("Poblando base de datos con datos iniciales...")
-            seed_path = os.path.join(basedir, 'seed.sql')
-            try:
-                # Usar sqlite3 directamente para ejecutar el seed.sql
-                # porque SQLAlchemy no maneja bien los comandos multi-línea
-                import sqlite3
-                sql_conn = sqlite3.connect(app.config['SQLALCHEMY_DATABASE_URI'].replace('sqlite:///', ''))
-                sql_conn.isolation_level = None
-                
-                with open(seed_path, 'r', encoding='utf-8') as f:
-                    sql_commands = f.read()
-                    sql_conn.executescript(sql_commands)
-                
-                sql_conn.close()
-                db.session.commit()
-                print("Base de datos poblada correctamente")
-            except FileNotFoundError:
-                print("Archivo seed.sql no encontrado, creando datos básicos...")
-
-                demo_movies = [
-                    Movie(title='Inception', description='Un ladrón experto que roba secretos corporativos utilizando tecnología de intercambio de sueños.', director='Christopher Nolan', genre='Ciencia Ficción', release_date='2010-07-16', duration_minutes=148, rating=8.8, poster_url='https://images.unsplash.com/photo-1440404653325-ab127d49abc1?w=300'),
-                    Movie(title='Matrix', description='Un hacker aprende la verdadera naturaleza de su realidad y su papel en la guerra contra sus controladores.', director='Las Wachowski', genre='Ciencia Ficción', release_date='1999-03-31', duration_minutes=136, rating=8.7, poster_url='https://images.unsplash.com/photo-1485095329183-d0daf68471ca?w=300')
-                ]
-                db.session.add_all(demo_movies)
-                db.session.commit()
-                print("Base de datos inicial creada con datos básicos")
+            print("Base de datos vacía o sin películas TMDB; esperando sincronización TMDB...")
         else:
-            print("Base de datos ya contiene datos; no es necesario sembrar de nuevo.")
+            print("Base de datos preparada para TMDB; se eliminaron datos de otras fuentes si existían.")
+
+        # Sincronización incremental desde API externa (si falla, la app continúa con datos locales)
+        sync_result = sync_movies_from_api(force=False)
+        if sync_result.get('ok'):
+            print(f"Sincronización API OK. Creadas: {sync_result.get('created', 0)} | Actualizadas: {sync_result.get('updated', 0)}")
+        elif sync_result.get('skipped'):
+            print("Sincronización API omitida por intervalo configurado")
+        else:
+            print(f"Sincronización API falló: {sync_result.get('error')}")
+
+        merged = deduplicate_movies_by_aliases()
+        if merged > 0:
+            print(f"Deduplicación aplicada. Películas fusionadas: {merged}")
 
 
 # ==================== FUNCIÓN CORS MANUAL ====================
@@ -236,6 +817,9 @@ def login():
 @cors_enabled
 def obtener_peliculas():
     try:
+        if MOVIES_AUTO_SYNC_ON_READ:
+            sync_movies_from_api(force=False)
+
         peliculas = Movie.query.all()
         return jsonify([{
             'id': p.id,
@@ -248,6 +832,7 @@ def obtener_peliculas():
             'rating': p.rating,
             'poster_url': p.poster_url,
             'video_url': p.video_url,
+            'source': p.source,
             'created_at': p.created_at.isoformat() if p.created_at else None,
             'updated_at': p.updated_at.isoformat() if p.updated_at else None
         } for p in peliculas]), 200
@@ -272,6 +857,7 @@ def obtener_pelicula(id):
             'rating': pelicula.rating,
             'poster_url': pelicula.poster_url,
             'video_url': pelicula.video_url,
+            'source': pelicula.source,
             'created_at': pelicula.created_at.isoformat() if pelicula.created_at else None,
             'updated_at': pelicula.updated_at.isoformat() if pelicula.updated_at else None
         }), 200
@@ -282,92 +868,7 @@ def obtener_pelicula(id):
 @cors_enabled
 def crear_pelicula():
     try:
-        # Obtener user_id del token y verificar rol admin
-        auth_header = request.headers.get('Authorization')
-        if not auth_header or not auth_header.startswith('Bearer '):
-            return jsonify({'error': 'Token requerido'}), 401
-        
-        token = auth_header.split(' ')[1]
-        try:
-            user_id = int(token.split('_')[1])
-        except:
-            return jsonify({'error': 'Token inválido'}), 401
-
-        usuario = db.session.get(User, user_id)
-        if not usuario or usuario.role != 'admin':
-            return jsonify({'error': 'Acceso denegado. Solo administradores pueden crear películas.'}), 403
-
-        datos = request.get_json()
-        if not datos:
-            return jsonify({'error': 'No se proporcionaron datos'}), 400
-
-        # Validar campos requeridos
-        if not datos.get('title'):
-            return jsonify({'error': 'El título es requerido'}), 400
-
-        # Procesar y validar datos
-        release_date_str = datos.get('release_date')
-        if release_date_str and release_date_str != '':
-            try:
-                release_date = datetime.strptime(release_date_str, '%Y-%m-%d').date()
-            except ValueError:
-                return jsonify({'error': 'Fecha de lanzamiento inválida'}), 400
-        else:
-            release_date = None
-
-        duration_minutes = datos.get('duration_minutes')
-        if duration_minutes == '' or duration_minutes is None:
-            duration_minutes = None
-        else:
-            try:
-                duration_minutes = int(duration_minutes)
-            except (ValueError, TypeError):
-                return jsonify({'error': 'Duración debe ser un número entero'}), 400
-
-        rating = datos.get('rating')
-        if rating == '' or rating is None:
-            rating = None
-        else:
-            try:
-                rating = float(rating)
-            except (ValueError, TypeError):
-                return jsonify({'error': 'Calificación debe ser un número'}), 400
-
-        # Crear película
-        pelicula = Movie(
-            title=datos['title'],
-            description=datos.get('description') or None,
-            director=datos.get('director') or None,
-            genre=datos.get('genre') or None,
-            release_date=release_date,
-            duration_minutes=duration_minutes,
-            rating=rating,
-            poster_url=datos.get('poster_url') or None,
-            video_url=datos.get('video_url') or None,
-            created_at=datetime.now(timezone.utc),
-            updated_at=datetime.now(timezone.utc)
-        )
-
-        db.session.add(pelicula)
-        db.session.commit()
-
-        return jsonify({
-            'mensaje': 'Película creada exitosamente',
-            'pelicula': {
-                'id': pelicula.id,
-                'title': pelicula.title,
-                'description': pelicula.description,
-                'director': pelicula.director,
-                'genre': pelicula.genre,
-                'release_date': pelicula.release_date.isoformat() if pelicula.release_date else None,
-                'duration_minutes': pelicula.duration_minutes,
-                'rating': pelicula.rating,
-                'poster_url': pelicula.poster_url,
-                'video_url': pelicula.video_url,
-                'created_at': pelicula.created_at.isoformat() if pelicula.created_at else None,
-                'updated_at': pelicula.updated_at.isoformat() if pelicula.updated_at else None
-            }
-        }), 201
+        return jsonify({'error': 'La creación manual de películas está deshabilitada. Solo se aceptan películas sincronizadas desde TMDB.'}), 403
 
     except Exception as e:
         db.session.rollback()
@@ -377,91 +878,7 @@ def crear_pelicula():
 @cors_enabled
 def editar_pelicula(id):
     try:
-        # Obtener user_id del token y verificar rol admin
-        auth_header = request.headers.get('Authorization')
-        if not auth_header or not auth_header.startswith('Bearer '):
-            return jsonify({'error': 'Token requerido'}), 401
-        
-        token = auth_header.split(' ')[1]
-        try:
-            user_id = int(token.split('_')[1])
-        except:
-            return jsonify({'error': 'Token inválido'}), 401
-
-        usuario = db.session.get(User, user_id)
-        if not usuario or usuario.role != 'admin':
-            return jsonify({'error': 'Acceso denegado. Solo administradores pueden editar películas.'}), 403
-
-        pelicula = db.session.get(Movie, id)
-        if not pelicula:
-            return jsonify({'error': 'Película no encontrada'}), 404
-        datos = request.get_json()
-        if not datos:
-            return jsonify({'error': 'No se proporcionaron datos'}), 400
-
-        # Actualizar campos
-        if 'title' in datos:
-            pelicula.title = datos['title']
-        if 'description' in datos:
-            pelicula.description = datos['description'] or None
-        if 'director' in datos:
-            pelicula.director = datos['director'] or None
-        if 'genre' in datos:
-            pelicula.genre = datos['genre'] or None
-        if 'release_date' in datos:
-            release_date_str = datos['release_date']
-            if release_date_str and release_date_str != '':
-                try:
-                    pelicula.release_date = datetime.strptime(release_date_str, '%Y-%m-%d').date()
-                except ValueError:
-                    return jsonify({'error': 'Fecha de lanzamiento inválida'}), 400
-            else:
-                pelicula.release_date = None
-        if 'duration_minutes' in datos:
-            duration_minutes = datos['duration_minutes']
-            if duration_minutes == '' or duration_minutes is None:
-                pelicula.duration_minutes = None
-            else:
-                try:
-                    pelicula.duration_minutes = int(duration_minutes)
-                except (ValueError, TypeError):
-                    return jsonify({'error': 'Duración debe ser un número entero'}), 400
-        if 'rating' in datos:
-            rating = datos['rating']
-            if rating == '' or rating is None:
-                pelicula.rating = None
-            else:
-                try:
-                    pelicula.rating = float(rating)
-                except (ValueError, TypeError):
-                    return jsonify({'error': 'Calificación debe ser un número'}), 400
-        if 'poster_url' in datos:
-            pelicula.poster_url = datos['poster_url'] or None
-        if 'video_url' in datos:
-            pelicula.video_url = datos['video_url'] or None
-
-        # Forzar actualización de updated_at
-        pelicula.updated_at = datetime.now(timezone.utc)
-
-        db.session.commit()
-
-        return jsonify({
-            'mensaje': 'Película actualizada exitosamente',
-            'pelicula': {
-                'id': pelicula.id,
-                'title': pelicula.title,
-                'description': pelicula.description,
-                'director': pelicula.director,
-                'genre': pelicula.genre,
-                'release_date': pelicula.release_date.isoformat() if pelicula.release_date else None,
-                'duration_minutes': pelicula.duration_minutes,
-                'rating': pelicula.rating,
-                'poster_url': pelicula.poster_url,
-                'video_url': pelicula.video_url,
-                'created_at': pelicula.created_at.isoformat() if pelicula.created_at else None,
-                'updated_at': pelicula.updated_at.isoformat() if pelicula.updated_at else None
-            }
-        }), 200
+        return jsonify({'error': 'La edición manual de películas está deshabilitada. Solo se persisten datos sincronizados desde TMDB.'}), 403
 
     except Exception as e:
         db.session.rollback()
@@ -500,6 +917,40 @@ def eliminar_pelicula(id):
 
     except Exception as e:
         db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/sync/peliculas', methods=['POST'])
+@cors_enabled
+def sincronizar_peliculas_api():
+    try:
+        # Obtener user_id del token y verificar rol admin
+        auth_header = request.headers.get('Authorization')
+        if not auth_header or not auth_header.startswith('Bearer '):
+            return jsonify({'error': 'Token requerido'}), 401
+
+        token = auth_header.split(' ')[1]
+        try:
+            user_id = int(token.split('_')[1])
+        except Exception:
+            return jsonify({'error': 'Token inválido'}), 401
+
+        usuario = db.session.get(User, user_id)
+        if not usuario or usuario.role != 'admin':
+            return jsonify({'error': 'Acceso denegado. Solo administradores pueden sincronizar películas.'}), 403
+
+        sync_result = sync_movies_from_api(force=True)
+        if sync_result.get('ok'):
+            return jsonify({
+                'mensaje': 'Sincronización completada',
+                'resultado': sync_result,
+            }), 200
+
+        return jsonify({
+            'error': 'No se pudo completar la sincronización',
+            'detalle': sync_result,
+        }), 502
+    except Exception as e:
         return jsonify({'error': str(e)}), 500
 
 # --- API: FAVORITOS ---
