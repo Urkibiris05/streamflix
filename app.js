@@ -111,7 +111,7 @@ function renderNavigation() {
   if (currentUser) {
     // Usuario autenticado
     menu.innerHTML = `
-      <li><a href="#" onclick="navigateTo('${routes.peliculas}'); return false;">Películas</a></li>
+      <li><a href="#" onclick="navigateTo('${routes.peliculas}'); return false;">Catálogo</a></li>
       <li><a href="#" onclick="navigateTo('${routes.favoritos}'); return false;">❤️ Favoritos</a></li>
       ${currentUser.role === 'admin' ? `<li><a href="#" onclick="navigateTo('${routes.admin}'); return false;">⚙️ Admin</a></li>` : ''}
       <li><span class="user-info">👤 ${currentUser.username}</span></li>
