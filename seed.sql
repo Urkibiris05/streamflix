@@ -123,31 +123,87 @@ Todas las películas se cargan con INSERT OR IGNORE para evitar duplicados.
 
 -- ==================== INSERCIONES DE SERIES ====================
 
--- Breaking Bad - Serie de prueba
+-- Breaking Bad
 INSERT OR IGNORE INTO series (title, description, director, genre, release_date, poster_url, created_at, updated_at) VALUES
-('Breaking Bad', 'A high school chemistry teacher turned meth kingpin. A story of transformation, ambition, and the consequences of choices.', 'Vince Gilligan', 'Drama/Crime', '2008-01-20', 'https://m.media-amazon.com/images/M/MV5BMJQ0MTQ2MzAxNV5BMl5BanBnXkFtZTgwNTAwMzQxNzE@._V1_.jpg', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
+('Breaking Bad', 'A high school chemistry teacher turned meth kingpin. A story of transformation, ambition, and the consequences of choices.', 'Vince Gilligan', 'Drama/Crimen', '2008-01-20', 'https://m.media-amazon.com/images/M/MV5BMJQ0MTQ2MzAxNV5BMl5BanBnXkFtZTgwNTAwMzQxNzE@._V1_.jpg', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
+
+-- La Casa de Papel (Money Heist)
+INSERT OR IGNORE INTO series (title, description, director, genre, release_date, poster_url, created_at, updated_at) VALUES
+('La Casa de Papel', 'A group of unique robbers hold hostages at the Royal Mint to execute the biggest heist in history.', 'Álex Pina', 'Drama/Acción', '2017-05-02', 'https://m.media-amazon.com/images/M/MV5BN2EyZGQyZDMtZWY2Ny00NzQ2LWI0ZDctNDY3ZTg1YjUwZDQ5XkEyXkFqcGc@._V1_.jpg', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
+
+-- Game of Thrones
+INSERT OR IGNORE INTO series (title, description, director, genre, release_date, poster_url, created_at, updated_at) VALUES
+('Game of Thrones', 'Nine noble families fight for control over the lands of Westeros, while an ancient enemy returns after being dormant for millennia.', 'David Benioff, D.B. Weiss', 'Drama/Fantasía', '2011-04-17', 'https://m.media-amazon.com/images/M/MV5BY2IzYWYxMDgtM2Q2NS00NjA3LWFiZTYtZjQyNDlhOWU4ZGI0XkEyXkFqcGc@._V1_.jpg', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
+
+-- Stranger Things
+INSERT OR IGNORE INTO series (title, description, director, genre, release_date, poster_url, created_at, updated_at) VALUES
+('Stranger Things', 'When a young boy disappears, his mother, a police chief and his friends must confront terrifying supernatural forces in order to get him back.', 'The Duffer Brothers', 'Ciencia Ficción/Terror', '2016-07-15', 'https://m.media-amazon.com/images/M/MV5BMjEzMDAxOTUyMV5BMl5BanBnXkFtZTcwMzg2NjA4Nw@@._V1_.jpg', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
+
+-- The Office
+INSERT OR IGNORE INTO series (title, description, director, genre, release_date, poster_url, created_at, updated_at) VALUES
+('The Office', 'A mockumentary on a group of typical office workers, where the workday consists of ego clashes, inappropriate behavior, and tedium.', 'Greg Daniels', 'Comedia', '2005-03-24', 'https://m.media-amazon.com/images/M/MV5BMjQ5MTAxMDc0Ml5BMl5BanBnXkFtZTcwNjI2ODEyMQ@@._V1_.jpg', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
 
 -- ==================== INSERCIONES DE EPISODIOS ====================
 
--- Temporada 1
+-- Breaking Bad - Temporada 1
 INSERT OR IGNORE INTO episode (series_id, title, description, season, episode_number, air_date, duration_minutes, video_url, created_at, updated_at) VALUES
 (1, 'Pilot', 'When an unassuming high school chemistry teacher discovers he is dying, he decides to use his last years to gain wealth for his family.', 1, 1, '2008-01-20', 58, '', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
 (1, 'Cat''s in the Bag', 'Walter must dispose of evidence while Jesse deals with a prisoner in chains. Hank celebrates his latest DEA bust.', 1, 2, '2008-01-27', 48, '', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
 (1, 'And the Bag''s in the River', 'Walter and Jesse go to extreme lengths to dispose of evidence. Nacho sets his sights on Jesse for revenge.', 1, 3, '2008-02-03', 47, '', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
 (1, 'Cancer Man', 'Walter Jr. worries about his father''s condition. Walter''s wife Skyler wants him to turn to his former teacher.', 1, 4, '2008-02-10', 47, '', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
-(1, 'Gray Matter', 'When Walter uses chemistry to eliminate some undesirable gang members, Jesse grows anxious. Flashbacks reveal how Walter came to be a high school teacher.', 1, 5, '2008-02-17', 58, '', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
-(1, 'Crazy Handful of Nothin''', 'Walter makes a bold move as a drug dealer. Jesse faces a hard choice when he spots an old flame. Walt Jr. gets in trouble at school.', 1, 6, '2008-02-24', 58, '', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+(1, 'Gray Matter', 'When Walter uses chemistry to eliminate some undesirable gang members, Jesse grows anxious.', 1, 5, '2008-02-17', 58, '', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+(1, 'Crazy Handful of Nothin''', 'Walter makes a bold move as a drug dealer. Jesse faces a hard choice when he spots an old flame.', 1, 6, '2008-02-24', 58, '', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
 (1, 'A No-Rough-Stuff-Type Deal', 'Walter and Jesse must make a high-stakes decision when Krazy-8 and Emilio corner them.', 1, 7, '2008-03-09', 58, '', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
 
--- Temporada 2
+-- Breaking Bad - Temporada 2
 INSERT OR IGNORE INTO episode (series_id, title, description, season, episode_number, air_date, duration_minutes, video_url, created_at, updated_at) VALUES
 (1, 'Seven Thirty-Seven', 'An old adversary surfaces in Albuquerque. Walt, Jesse, and Skyler face challenges as Walt lies to cover up his activities.', 2, 1, '2009-03-08', 58, '', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
 (1, 'Grilled', 'Walter and Jesse are trapped in a dire situation. Hank investigates a connection to a major drug dealer.', 2, 2, '2009-03-15', 47, '', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
-(1, 'Bit by a Dead Bee', 'Walt and Jesse are revealed after being found by DEA. Skyler becomes suspicious. A mysterious figure makes an appearance.', 2, 3, '2009-03-22', 47, '', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
-(1, 'Down', 'Skyler fights for her marriage with Walt. Jesse spirals after a tough loss. Nacho leads a criminal enterprise.', 2, 4, '2009-03-29', 47, '', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
-(1, 'Breakage', 'Walter and Jesse expand their operation. Skyler visits her son. Mike is introduced to the story.', 2, 5, '2009-04-05', 47, '', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
+(1, 'Bit by a Dead Bee', 'Walt and Jesse are revealed after being found by DEA. Skyler becomes suspicious.', 2, 3, '2009-03-22', 47, '', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+(1, 'Down', 'Skyler fights for her marriage with Walt. Jesse spirals after a tough loss.', 2, 4, '2009-03-29', 47, '', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+(1, 'Breakage', 'Walter and Jesse expand their operation. Skyler visits her son.', 2, 5, '2009-04-05', 47, '', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
 
--- Temporada 3 (primeros 2 episodios como ejemplo)
+-- Breaking Bad - Temporada 3
 INSERT OR IGNORE INTO episode (series_id, title, description, season, episode_number, air_date, duration_minutes, video_url, created_at, updated_at) VALUES
 (1, 'No Mas', 'Walt and Skyler face a turning point in their relationship. The Cousins arrive in Albuquerque.', 3, 1, '2010-03-21', 58, '', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
 (1, 'Caballo sin Nombre', 'Jesse is traumatized by the aftermath. Walt makes a plea to a former associate.', 3, 2, '2010-03-28', 47, '', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
+
+-- La Casa de Papel - Temporada 1
+INSERT OR IGNORE INTO episode (series_id, title, description, season, episode_number, air_date, duration_minutes, video_url, created_at, updated_at) VALUES
+(2, 'Efectuar lo pactado', 'Eight robbers take hostages and lock themselves in the Royal Mint of Spain as a criminal negotiator tries to manipulate them.', 1, 1, '2017-05-02', 120, '', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+(2, 'Imprudencia letrada', 'The police are called to the scene, while the robbers try to access the vault. Berlin takes charge.', 1, 2, '2017-05-02', 115, '', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+(2, 'Errar al disparar', 'The team deals with the unexpected arrival of a police sharpshooter. Tokyo remembers her past.', 1, 3, '2017-05-02', 110, '', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+(2, 'Para qué sirve exactamente un centollo', 'The team faces an internal conflict. Berlin reveals his plan to Tokyo.', 1, 4, '2017-05-02', 100, '', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+(2, 'El día de la marmota', 'The team relives the first heist day. Nairobi tries to get information from the police.', 1, 5, '2017-05-02', 95, '', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
+
+-- La Casa de Papel - Temporada 2
+INSERT OR IGNORE INTO episode (series_id, title, description, season, episode_number, air_date, duration_minutes, video_url, created_at, updated_at) VALUES
+(2, '0% -> 100%', 'The team celebrates their success but a new threat emerges. Palermo joins the plan.', 2, 1, '2018-04-06', 100, '', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+(2, 'Akon', 'The team deals with the aftermath of the gold heist. A new character is introduced.', 2, 2, '2018-04-06', 95, '', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+(2, '48 horas', 'The countdown begins for the new heist. Relationships are tested.', 2, 3, '2018-04-06', 90, '', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+(2, 'El iso', 'Berlin reveals his condition. The team faces a difficult decision.', 2, 4, '2018-04-06', 95, '', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+(2, 'Reducir velocidad', 'The team works together to execute the plan. Tokyo makes a sacrifice.', 2, 5, '2018-04-06', 100, '', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
+
+-- Game of Thrones - Temporada 1
+INSERT OR IGNORE INTO episode (series_id, title, description, season, episode_number, air_date, duration_minutes, video_url, created_at, updated_at) VALUES
+(3, 'Winter Is Coming', 'Ned Stark learns that his friend King Robert Baratheon is visiting Winterfell after many years.', 1, 1, '2011-04-17', 60, '', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+(3, 'The Kingsroad', 'Ned accepts the role as Hand of the King. The Lannisters plan their next move.', 1, 2, '2011-04-24', 60, '', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+(3, 'Lord Snow', 'Ned begins his investigation into the death of the previous Hand. Jon joins the Night''s Watch.', 1, 3, '2011-05-01', 60, '', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+(3, 'Cripples, Bastards, and Broken Things', 'Ned uncovers more secrets. The King announces his plans for the tournament.', 1, 4, '2011-05-08', 60, '', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+(3, 'The Wolf and the Lion', 'Ned refuses to be part of a plot. The Lannisters respond to the threat.', 1, 5, '2011-05-15', 60, '', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
+
+-- Stranger Things - Temporada 1
+INSERT OR IGNORE INTO episode (series_id, title, description, season, episode_number, air_date, duration_minutes, video_url, created_at, updated_at) VALUES
+(4, 'The Vanishing of Will Byers', 'On his way home from a friend''s house, young Will sees something terrifying. Nearby, a sinister secret lurks in the depths of a government lab.', 1, 1, '2016-07-15', 55, '', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+(4, 'The Weirdo on Maple Street', 'Lucas, Mike and Dustin try to talk to the girl they found in the woods. Hopper questions an anxious Joyce about an unsettling phone call.', 1, 2, '2016-07-15', 55, '', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+(4, 'Holly, Jolly', 'An increasingly concerned Nancy looks for Barb and finds out what Jonathan''s been up to. Joyce is convinced Will is trying to talk to her.', 1, 3, '2016-07-15', 55, '', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+(4, 'The Body', 'Refusing to believe Will is dead, Joyce tries to connect with her son. Nancy and Jonathan form an unlikely alliance.', 1, 4, '2016-07-15', 55, '', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+(4, 'The Flea and the Acrobat', 'Hopper grills an increasingly terrified Joyce about an unsettling phone call. The boys wait for Nancy at the school.', 1, 5, '2016-07-15', 55, '', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
+
+-- The Office - Temporada 1
+INSERT OR IGNORE INTO episode (series_id, title, description, season, episode_number, air_date, duration_minutes, video_url, created_at, updated_at) VALUES
+(5, 'Pilot', 'A documentary about a group of office workers in Scranton, Pennsylvania, where their daily lives are filled with mundane moments.', 1, 1, '2005-03-24', 22, '', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+(5, 'Diversity Day', 'Michael hosts a diversity day seminar. The office is divided by a new hire.', 1, 2, '2005-03-29', 22, '', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+(5, 'Health Care', 'Three employees are chosen to test different health care plans. Jim and Pam conspire to make Dwight the subject of a prank.', 1, 3, '2005-04-05', 22, '', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+(5, 'The Alliance', 'Jim and Dwight make a pact to not prank each other. Michael decides to have a party for his birthday.', 1, 4, '2005-04-12', 22, '', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+(5, 'Basketball', 'The office plays a basketball game against the warehouse workers. Michael tries to prove his skills.', 1, 5, '2005-04-19', 22, '', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);

@@ -38,7 +38,7 @@ def _load_env_file(env_path):
                 os.environ[key] = value
 
 
-_load_env_file(os.path.join(basedir, '.env'))
+_load_env_file(os.path.join(basedir, '.env.example'))
 app = Flask(__name__, static_url_path='', static_folder='.')
 app.config['SECRET_KEY'] = 'tu_clave_secreta'
 
@@ -686,6 +686,84 @@ def sync_movies_from_api(force=False):
         }
 
 # ==================== FUNCIONES DE INICIALIZACIÓN ====================
+def _load_seed_data():
+    """Cargar datos iniciales desde seed.sql"""
+    seed_file = os.path.join(basedir, 'seed.sql')
+    if not os.path.exists(seed_file):
+        print("No se encontró seed.sql")
+        return False
+    
+    try:
+        with open(seed_file, 'r', encoding='utf-8') as f:
+            sql_content = f.read()
+        
+        # Cargar usuarios
+        user_pattern = r'(INSERT\s+OR\s+IGNORE\s+INTO\s+user\s+.*?;)'
+        user_inserts = re.findall(user_pattern, sql_content, re.IGNORECASE | re.DOTALL)
+        for insert in user_inserts:
+            try:
+                db.session.execute(text(insert.strip()))
+                db.session.commit()
+            except:
+                pass
+        
+        # Cargar películas
+        movie_pattern = r'(INSERT\s+OR\s+IGNORE\s+INTO\s+movie\s+.*?;)'
+        movie_inserts = re.findall(movie_pattern, sql_content, re.IGNORECASE | re.DOTALL)
+        for insert in movie_inserts:
+            try:
+                db.session.execute(text(insert.strip()))
+                db.session.commit()
+            except:
+                pass
+        
+        # Cargar series
+        series_pattern = r'(INSERT\s+OR\s+IGNORE\s+INTO\s+series\s+.*?;)'
+        series_inserts = re.findall(series_pattern, sql_content, re.IGNORECASE | re.DOTALL)
+        for insert in series_inserts:
+            try:
+                db.session.execute(text(insert.strip()))
+                db.session.commit()
+            except:
+                pass
+        
+        # Cargar episodios
+        episode_pattern = r'(INSERT\s+OR\s+IGNORE\s+INTO\s+episode\s+.*?;)'
+        episode_inserts = re.findall(episode_pattern, sql_content, re.IGNORECASE | re.DOTALL)
+        for insert in episode_inserts:
+            try:
+                db.session.execute(text(insert.strip()))
+                db.session.commit()
+            except:
+                pass
+        
+        # Cargar favoritos
+        fav_pattern = r'(INSERT\s+OR\s+IGNORE\s+INTO\s+favorites\s+.*?;)'
+        fav_inserts = re.findall(fav_pattern, sql_content, re.IGNORECASE | re.DOTALL)
+        for insert in fav_inserts:
+            try:
+                db.session.execute(text(insert.strip()))
+                db.session.commit()
+            except:
+                pass
+        
+        # Cargar reviews
+        review_pattern = r'(INSERT\s+OR\s+IGNORE\s+INTO\s+review\s+.*?;)'
+        review_inserts = re.findall(review_pattern, sql_content, re.IGNORECASE | re.DOTALL)
+        for insert in review_inserts:
+            try:
+                db.session.execute(text(insert.strip()))
+                db.session.commit()
+            except:
+                pass
+        
+        print("Seed data cargado correctamente")
+        return True
+    except Exception as e:
+        print(f"Error cargando seed data: {e}")
+        return False
+
+
 def init_db():
     """Inicializar base de datos y crear tablas"""
     with app.app_context():
@@ -696,11 +774,15 @@ def init_db():
         if removed > 0:
             print(f"Películas no-TMDB eliminadas de la BD: {removed}")
 
-        # Ejecutar seed data si no hay datos
+        # Cargar datos del seed.sql si no hay usuarios o películas
         if User.query.count() == 0 or Movie.query.count() == 0:
-            print("Base de datos vacía o sin películas TMDB; esperando sincronización TMDB...")
-        else:
-            print("Base de datos preparada para TMDB; se eliminaron datos de otras fuentes si existían.")
+            print("Cargando datos iniciales desde seed.sql...")
+            _load_seed_data()
+        
+        # También cargar series y episodios del seed si no hay
+        if Series.query.count() == 0 or Episode.query.count() == 0:
+            print("Cargando series desde seed.sql...")
+            _load_seed_data()
 
         # Sincronización incremental desde API externa (si falla, la app continúa con datos locales)
         sync_result = sync_movies_from_api(force=False)
