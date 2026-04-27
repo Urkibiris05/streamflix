@@ -38,7 +38,7 @@ def _load_env_file(env_path):
                 os.environ[key] = value
 
 
-_load_env_file(os.path.join(basedir, '.env.example'))
+_load_env_file(os.path.join(basedir, '.env'))
 app = Flask(__name__, static_url_path='', static_folder='.')
 app.config['SECRET_KEY'] = 'tu_clave_secreta'
 
