@@ -1,4 +1,5 @@
 import os
+import re
 import unicodedata
 import requests
 from flask import Flask, request, jsonify, send_from_directory, make_response
@@ -157,6 +158,34 @@ class SeriesFavorites(db.Model):
     created_at = db.Column(db.DateTime, default=db.func.current_timestamp())
 
 
+class SeriesReview(db.Model):
+    """Reviews y ratings para series completas"""
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    series_id = db.Column(db.Integer, db.ForeignKey('series.id'), nullable=False)
+    rating = db.Column(db.Integer, nullable=False)
+    review_text = db.Column(db.Text, nullable=True)
+    created_at = db.Column(db.DateTime(timezone=True), default=db.func.current_timestamp())
+    updated_at = db.Column(db.DateTime(timezone=True), default=db.func.current_timestamp(), onupdate=db.func.current_timestamp())
+
+    user = db.relationship('User', backref='series_reviews')
+    series = db.relationship('Series', backref='reviews')
+
+
+class EpisodeReview(db.Model):
+    """Reviews y ratings para episodios individuales"""
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    episode_id = db.Column(db.Integer, db.ForeignKey('episode.id'), nullable=False)
+    rating = db.Column(db.Integer, nullable=False)
+    review_text = db.Column(db.Text, nullable=True)
+    created_at = db.Column(db.DateTime(timezone=True), default=db.func.current_timestamp())
+    updated_at = db.Column(db.DateTime(timezone=True), default=db.func.current_timestamp(), onupdate=db.func.current_timestamp())
+
+    user = db.relationship('User', backref='episode_reviews')
+    episode = db.relationship('Episode', backref='reviews')
+
+
 class SyncState(db.Model):
     key = db.Column(db.String(100), primary_key=True)
     value = db.Column(db.String(255), nullable=False)
@@ -209,6 +238,39 @@ def ensure_schema_compatibility():
             conn.execute(text("ALTER TABLE movie ADD COLUMN source VARCHAR(50) DEFAULT 'local'"))
 
         conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS idx_movie_source_external_id ON movie (source, external_id)"))
+
+        # Verificar y crear tablas para reviews de series y episodios
+        tables = {row[0] for row in conn.execute(text("SELECT name FROM sqlite_master WHERE type='table'")).fetchall()}
+        
+        if 'series_review' not in tables:
+            conn.execute(text('''
+                CREATE TABLE series_review (
+                    id INTEGER NOT NULL PRIMARY KEY,
+                    user_id INTEGER NOT NULL,
+                    series_id INTEGER NOT NULL,
+                    rating INTEGER NOT NULL,
+                    review_text TEXT,
+                    created_at TIMESTAMP,
+                    updated_at TIMESTAMP,
+                    FOREIGN KEY (user_id) REFERENCES user (id),
+                    FOREIGN KEY (series_id) REFERENCES series (id)
+                )
+            '''))
+        
+        if 'episode_review' not in tables:
+            conn.execute(text('''
+                CREATE TABLE episode_review (
+                    id INTEGER NOT NULL PRIMARY KEY,
+                    user_id INTEGER NOT NULL,
+                    episode_id INTEGER NOT NULL,
+                    rating INTEGER NOT NULL,
+                    review_text TEXT,
+                    created_at TIMESTAMP,
+                    updated_at TIMESTAMP,
+                    FOREIGN KEY (user_id) REFERENCES user (id),
+                    FOREIGN KEY (episode_id) REFERENCES episode (id)
+                )
+            '''))
 
 
 def _get_sync_state(key):
@@ -757,6 +819,26 @@ def _load_seed_data():
             except:
                 pass
         
+        # Cargar reviews de series
+        series_review_pattern = r'(INSERT\s+OR\s+IGNORE\s+INTO\s+series_review\s+.*?;)'
+        series_review_inserts = re.findall(series_review_pattern, sql_content, re.IGNORECASE | re.DOTALL)
+        for insert in series_review_inserts:
+            try:
+                db.session.execute(text(insert.strip()))
+                db.session.commit()
+            except:
+                pass
+        
+        # Cargar reviews de episodios
+        episode_review_pattern = r'(INSERT\s+OR\s+IGNORE\s+INTO\s+episode_review\s+.*?;)'
+        episode_review_inserts = re.findall(episode_review_pattern, sql_content, re.IGNORECASE | re.DOTALL)
+        for insert in episode_review_inserts:
+            try:
+                db.session.execute(text(insert.strip()))
+                db.session.commit()
+            except:
+                pass
+        
         print("Seed data cargado correctamente")
         return True
     except Exception as e:
@@ -1089,18 +1171,35 @@ def sincronizar_peliculas_api():
 @cors_enabled
 def obtener_series():
     try:
+        from sqlalchemy import func
+
         series = Series.query.all()
-        return jsonify([{
-            'id': s.id,
-            'title': s.title,
-            'description': s.description,
-            'director': s.director,
-            'genre': s.genre,
-            'release_date': s.release_date.isoformat() if s.release_date else None,
-            'poster_url': s.poster_url,
-            'created_at': s.created_at.isoformat() if s.created_at else None,
-            'updated_at': s.updated_at.isoformat() if s.updated_at else None,
-        } for s in series]), 200
+        series_list = []
+        for s in series:
+            # Obtener rating promedio de la serie
+            serie_rating = db.session.query(
+                func.avg(SeriesReview.rating).label('average_rating'),
+                func.count(SeriesReview.id).label('total_reviews')
+            ).filter(SeriesReview.series_id == s.id).first()
+
+            avg_rating = float(serie_rating.average_rating) if serie_rating.average_rating else 0
+            total_reviews = serie_rating.total_reviews or 0
+
+            series_list.append({
+                'id': s.id,
+                'title': s.title,
+                'description': s.description,
+                'director': s.director,
+                'genre': s.genre,
+                'release_date': s.release_date.isoformat() if s.release_date else None,
+                'poster_url': s.poster_url,
+                'average_rating': round(avg_rating, 2),
+                'total_reviews': total_reviews,
+                'created_at': s.created_at.isoformat() if s.created_at else None,
+                'updated_at': s.updated_at.isoformat() if s.updated_at else None,
+            })
+
+        return jsonify(series_list), 200
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
@@ -1109,16 +1208,60 @@ def obtener_series():
 @cors_enabled
 def obtener_serie(id):
     try:
+        from sqlalchemy import func
+
         serie = db.session.get(Series, id)
         if not serie:
             return jsonify({'error': 'Serie no encontrada'}), 404
 
+        # Obtener rating promedio de la serie
+        serie_rating = db.session.query(
+            func.avg(SeriesReview.rating).label('average_rating'),
+            func.count(SeriesReview.id).label('total_reviews')
+        ).filter(SeriesReview.series_id == id).first()
+
+        average_rating_serie = float(serie_rating.average_rating) if serie_rating.average_rating else 0
+        total_reviews_serie = serie_rating.total_reviews or 0
+
+        # Obtener reviews de la serie
+        reviews_serie = SeriesReview.query.filter_by(series_id=id).order_by(SeriesReview.created_at.desc()).limit(5).all()
+        serie_reviews_list = [{
+            'id': r.id,
+            'user_id': r.user_id,
+            'username': r.user.username,
+            'rating': r.rating,
+            'review_text': r.review_text,
+            'created_at': r.created_at.isoformat() if r.created_at else None,
+        } for r in reviews_serie]
+
+        # Obtener episodios
         episodios = Episode.query.filter_by(series_id=id).order_by(Episode.season, Episode.episode_number).all()
         episodes_by_season = {}
         for ep in episodios:
             season = ep.season
             if season not in episodes_by_season:
                 episodes_by_season[season] = []
+
+            # Obtener rating promedio del episodio
+            ep_rating = db.session.query(
+                func.avg(EpisodeReview.rating).label('average_rating'),
+                func.count(EpisodeReview.id).label('total_reviews')
+            ).filter(EpisodeReview.episode_id == ep.id).first()
+
+            ep_avg_rating = float(ep_rating.average_rating) if ep_rating.average_rating else 0
+            ep_total_reviews = ep_rating.total_reviews or 0
+
+            # Obtener reviews del episodio
+            ep_reviews = EpisodeReview.query.filter_by(episode_id=ep.id).order_by(EpisodeReview.created_at.desc()).limit(3).all()
+            ep_reviews_list = [{
+                'id': er.id,
+                'user_id': er.user_id,
+                'username': er.user.username,
+                'rating': er.rating,
+                'review_text': er.review_text,
+                'created_at': er.created_at.isoformat() if er.created_at else None,
+            } for er in ep_reviews]
+
             episodes_by_season[season].append({
                 'id': ep.id,
                 'title': ep.title,
@@ -1128,6 +1271,9 @@ def obtener_serie(id):
                 'air_date': ep.air_date.isoformat() if ep.air_date else None,
                 'duration_minutes': ep.duration_minutes,
                 'video_url': ep.video_url,
+                'average_rating': round(ep_avg_rating, 2),
+                'total_reviews': ep_total_reviews,
+                'reviews': ep_reviews_list,
                 'created_at': ep.created_at.isoformat() if ep.created_at else None,
                 'updated_at': ep.updated_at.isoformat() if ep.updated_at else None,
             })
@@ -1140,6 +1286,9 @@ def obtener_serie(id):
             'genre': serie.genre,
             'release_date': serie.release_date.isoformat() if serie.release_date else None,
             'poster_url': serie.poster_url,
+            'average_rating': round(average_rating_serie, 2),
+            'total_reviews': total_reviews_serie,
+            'reviews': serie_reviews_list,
             'episodes_by_season': episodes_by_season,
             'created_at': serie.created_at.isoformat() if serie.created_at else None,
             'updated_at': serie.updated_at.isoformat() if serie.updated_at else None,
@@ -1238,6 +1387,302 @@ def quitar_serie_favorito(series_id):
         db.session.delete(favorito)
         db.session.commit()
         return jsonify({'mensaje': 'Serie eliminada de favoritos'}), 200
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
+
+# --- API: REVIEWS DE SERIES ---
+@app.route('/api/series/<int:series_id>/reviews', methods=['GET'])
+@cors_enabled
+def obtener_reviews_serie(series_id):
+    try:
+        serie = db.session.get(Series, series_id)
+        if not serie:
+            return jsonify({'error': 'Serie no encontrada'}), 404
+
+        reviews = SeriesReview.query.filter_by(series_id=series_id).order_by(SeriesReview.created_at.desc()).all()
+        return jsonify([{
+            'id': r.id,
+            'user_id': r.user_id,
+            'username': r.user.username,
+            'series_id': r.series_id,
+            'rating': r.rating,
+            'review_text': r.review_text,
+            'created_at': r.created_at.isoformat() if r.created_at else None,
+            'updated_at': r.updated_at.isoformat() if r.updated_at else None,
+        } for r in reviews]), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/series/<int:series_id>/average-rating', methods=['GET'])
+@cors_enabled
+def obtener_rating_promedio_serie(series_id):
+    try:
+        from sqlalchemy import func
+
+        serie = db.session.get(Series, series_id)
+        if not serie:
+            return jsonify({'error': 'Serie no encontrada'}), 404
+
+        resultado = db.session.query(
+            func.avg(SeriesReview.rating).label('average_rating'),
+            func.count(SeriesReview.id).label('total_reviews')
+        ).filter(SeriesReview.series_id == series_id).first()
+
+        average_rating = float(resultado.average_rating) if resultado.average_rating else 0
+        total_reviews = resultado.total_reviews or 0
+
+        return jsonify({
+            'series_id': series_id,
+            'average_rating': round(average_rating, 2),
+            'total_reviews': total_reviews,
+        }), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/series/reviews', methods=['POST'])
+@cors_enabled
+def crear_review_serie():
+    try:
+        auth_header = request.headers.get('Authorization')
+        if not auth_header or not auth_header.startswith('Bearer '):
+            return jsonify({'error': 'Token requerido'}), 401
+
+        token = auth_header.split(' ')[1]
+        try:
+            user_id = int(token.split('_')[1])
+        except Exception:
+            return jsonify({'error': 'Token inválido'}), 401
+
+        datos = request.get_json()
+        if not datos:
+            return jsonify({'error': 'No se proporcionaron datos'}), 400
+
+        series_id = datos.get('series_id')
+        rating = datos.get('rating')
+        review_text = datos.get('review_text', '')
+
+        if not series_id or rating is None:
+            return jsonify({'error': 'series_id y rating son requeridos'}), 400
+
+        try:
+            rating = int(rating)
+            if rating < 1 or rating > 10:
+                return jsonify({'error': 'El rating debe estar entre 1 y 10'}), 400
+        except (ValueError, TypeError):
+            return jsonify({'error': 'El rating debe ser un número entre 1 y 10'}), 400
+
+        serie = db.session.get(Series, series_id)
+        if not serie:
+            return jsonify({'error': 'Serie no encontrada'}), 404
+
+        existing_review = SeriesReview.query.filter_by(user_id=user_id, series_id=series_id).first()
+        if existing_review:
+            return jsonify({'error': 'Ya tienes un comentario para esta serie'}), 409
+
+        review = SeriesReview(
+            user_id=user_id,
+            series_id=series_id,
+            rating=rating,
+            review_text=review_text.strip() if review_text else None,
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
+        )
+        db.session.add(review)
+        db.session.commit()
+
+        return jsonify({
+            'mensaje': 'Comentario de serie creado exitosamente',
+            'review': {
+                'id': review.id,
+                'user_id': review.user_id,
+                'series_id': review.series_id,
+                'rating': review.rating,
+                'review_text': review.review_text,
+                'created_at': review.created_at.isoformat() if review.created_at else None,
+                'updated_at': review.updated_at.isoformat() if review.updated_at else None,
+            }
+        }), 201
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/series/reviews/<int:review_id>', methods=['DELETE'])
+@cors_enabled
+def eliminar_review_serie(review_id):
+    try:
+        auth_header = request.headers.get('Authorization')
+        if not auth_header or not auth_header.startswith('Bearer '):
+            return jsonify({'error': 'Token requerido'}), 401
+
+        token = auth_header.split(' ')[1]
+        try:
+            user_id = int(token.split('_')[1])
+        except Exception:
+            return jsonify({'error': 'Token inválido'}), 401
+
+        review = db.session.get(SeriesReview, review_id)
+        if not review:
+            return jsonify({'error': 'Comentario de serie no encontrado'}), 404
+
+        if review.user_id != user_id:
+            return jsonify({'error': 'No tienes permiso para eliminar este comentario'}), 403
+
+        db.session.delete(review)
+        db.session.commit()
+        return jsonify({'mensaje': 'Comentario de serie eliminado exitosamente'}), 200
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
+
+# --- API: REVIEWS DE EPISODIOS ---
+@app.route('/api/episodios/<int:episode_id>/reviews', methods=['GET'])
+@cors_enabled
+def obtener_reviews_episodio(episode_id):
+    try:
+        episodio = db.session.get(Episode, episode_id)
+        if not episodio:
+            return jsonify({'error': 'Episodio no encontrado'}), 404
+
+        reviews = EpisodeReview.query.filter_by(episode_id=episode_id).order_by(EpisodeReview.created_at.desc()).all()
+        return jsonify([{
+            'id': r.id,
+            'user_id': r.user_id,
+            'username': r.user.username,
+            'episode_id': r.episode_id,
+            'rating': r.rating,
+            'review_text': r.review_text,
+            'created_at': r.created_at.isoformat() if r.created_at else None,
+            'updated_at': r.updated_at.isoformat() if r.updated_at else None,
+        } for r in reviews]), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/episodios/<int:episode_id>/average-rating', methods=['GET'])
+@cors_enabled
+def obtener_rating_promedio_episodio(episode_id):
+    try:
+        from sqlalchemy import func
+
+        episodio = db.session.get(Episode, episode_id)
+        if not episodio:
+            return jsonify({'error': 'Episodio no encontrado'}), 404
+
+        resultado = db.session.query(
+            func.avg(EpisodeReview.rating).label('average_rating'),
+            func.count(EpisodeReview.id).label('total_reviews')
+        ).filter(EpisodeReview.episode_id == episode_id).first()
+
+        average_rating = float(resultado.average_rating) if resultado.average_rating else 0
+        total_reviews = resultado.total_reviews or 0
+
+        return jsonify({
+            'episode_id': episode_id,
+            'average_rating': round(average_rating, 2),
+            'total_reviews': total_reviews,
+        }), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/episodios/reviews', methods=['POST'])
+@cors_enabled
+def crear_review_episodio():
+    try:
+        auth_header = request.headers.get('Authorization')
+        if not auth_header or not auth_header.startswith('Bearer '):
+            return jsonify({'error': 'Token requerido'}), 401
+
+        token = auth_header.split(' ')[1]
+        try:
+            user_id = int(token.split('_')[1])
+        except Exception:
+            return jsonify({'error': 'Token inválido'}), 401
+
+        datos = request.get_json()
+        if not datos:
+            return jsonify({'error': 'No se proporcionaron datos'}), 400
+
+        episode_id = datos.get('episode_id')
+        rating = datos.get('rating')
+        review_text = datos.get('review_text', '')
+
+        if not episode_id or rating is None:
+            return jsonify({'error': 'episode_id y rating son requeridos'}), 400
+
+        try:
+            rating = int(rating)
+            if rating < 1 or rating > 10:
+                return jsonify({'error': 'El rating debe estar entre 1 y 10'}), 400
+        except (ValueError, TypeError):
+            return jsonify({'error': 'El rating debe ser un número entre 1 y 10'}), 400
+
+        episodio = db.session.get(Episode, episode_id)
+        if not episodio:
+            return jsonify({'error': 'Episodio no encontrado'}), 404
+
+        existing_review = EpisodeReview.query.filter_by(user_id=user_id, episode_id=episode_id).first()
+        if existing_review:
+            return jsonify({'error': 'Ya tienes un comentario para este episodio'}), 409
+
+        review = EpisodeReview(
+            user_id=user_id,
+            episode_id=episode_id,
+            rating=rating,
+            review_text=review_text.strip() if review_text else None,
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
+        )
+        db.session.add(review)
+        db.session.commit()
+
+        return jsonify({
+            'mensaje': 'Comentario de episodio creado exitosamente',
+            'review': {
+                'id': review.id,
+                'user_id': review.user_id,
+                'episode_id': review.episode_id,
+                'rating': review.rating,
+                'review_text': review.review_text,
+                'created_at': review.created_at.isoformat() if review.created_at else None,
+                'updated_at': review.updated_at.isoformat() if review.updated_at else None,
+            }
+        }), 201
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/episodios/reviews/<int:review_id>', methods=['DELETE'])
+@cors_enabled
+def eliminar_review_episodio(review_id):
+    try:
+        auth_header = request.headers.get('Authorization')
+        if not auth_header or not auth_header.startswith('Bearer '):
+            return jsonify({'error': 'Token requerido'}), 401
+
+        token = auth_header.split(' ')[1]
+        try:
+            user_id = int(token.split('_')[1])
+        except Exception:
+            return jsonify({'error': 'Token inválido'}), 401
+
+        review = db.session.get(EpisodeReview, review_id)
+        if not review:
+            return jsonify({'error': 'Comentario de episodio no encontrado'}), 404
+
+        if review.user_id != user_id:
+            return jsonify({'error': 'No tienes permiso para eliminar este comentario'}), 403
+
+        db.session.delete(review)
+        db.session.commit()
+        return jsonify({'mensaje': 'Comentario de episodio eliminado exitosamente'}), 200
     except Exception as e:
         db.session.rollback()
         return jsonify({'error': str(e)}), 500

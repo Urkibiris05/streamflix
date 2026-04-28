@@ -207,3 +207,62 @@ INSERT OR IGNORE INTO episode (series_id, title, description, season, episode_nu
 (5, 'Health Care', 'Three employees are chosen to test different health care plans. Jim and Pam conspire to make Dwight the subject of a prank.', 1, 3, '2005-04-05', 22, '', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
 (5, 'The Alliance', 'Jim and Dwight make a pact to not prank each other. Michael decides to have a party for his birthday.', 1, 4, '2005-04-12', 22, '', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
 (5, 'Basketball', 'The office plays a basketball game against the warehouse workers. Michael tries to prove his skills.', 1, 5, '2005-04-19', 22, '', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
+
+-- ==================== INSERCIONES DE REVIEWS DE SERIES ====================
+
+-- Reviews de Breaking Bad (series_id: 1)
+INSERT OR IGNORE INTO series_review (user_id, series_id, rating, review_text, created_at, updated_at) VALUES
+(1, 1, 10, 'La mejor serie de todos los tiempos. Walter White es un personaje único.', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+(3, 1, 9, 'Excelente narrativa y desarrollo de personajes. Muy recomendable.', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+(4, 1, 10, 'Bryan Cranston está increíble. El final es perfecto.', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
+
+-- Reviews de La Casa de Papel (series_id: 2)
+INSERT OR IGNORE INTO series_review (user_id, series_id, rating, review_text, created_at, updated_at) VALUES
+(1, 2, 8, 'Muy buena serie de atracos. Los personajes son carismáticos.', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+(5, 2, 9, 'La tensión es increíble. Berlin es un personaje memorable.', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
+
+-- Reviews de Game of Thrones (series_id: 3)
+INSERT OR IGNORE INTO series_review (user_id, series_id, rating, review_text, created_at, updated_at) VALUES
+(3, 3, 7, 'Gran producción pero el final fue decepcionante.', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+(4, 3, 9, 'Los dragones y la política son fascinantes.', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
+
+-- Reviews de Stranger Things (series_id: 4)
+INSERT OR IGNORE INTO series_review (user_id, series_id, rating, review_text, created_at, updated_at) VALUES
+(1, 4, 9, 'Nostálgica y aterradora a la vez. El mundo de Upside Down es increíble.', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+(5, 4, 8, 'Los niños actúan muy bien. La historia es adictiva.', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
+
+-- Reviews de The Office (series_id: 5)
+INSERT OR IGNORE INTO series_review (user_id, series_id, rating, review_text, created_at, updated_at) VALUES
+(1, 5, 8, 'Muy divertida. Michael Scott es el mejor.', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+(3, 5, 7, 'Comedia clásica. Algunos episodios son mejores que otros.', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
+
+-- ==================== INSERCIONES DE REVIEWS DE EPISODIOS ====================
+
+-- Reviews de episodios de Breaking Bad (episodios 1-7 de temporada 1)
+INSERT OR IGNORE INTO episode_review (user_id, episode_id, rating, review_text, created_at, updated_at) VALUES
+(1, 1, 10, 'El piloto perfecto. Inmediatamente te atrapa.', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+(3, 1, 9, 'Gran inicio de serie. Walter es relatable.', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+(1, 2, 8, 'La escena delRV es intensa.', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+(4, 3, 9, 'El episodio con el río es memorable.', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+(5, 6, 10, 'Crazy Handful of Nothin es épico!', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
+
+-- Reviews de episodios de La Casa de Papel
+INSERT OR IGNORE INTO episode_review (user_id, episode_id, rating, review_text, created_at, updated_at) VALUES
+(1, 8, 9, 'El primer episodio de 2 horas establece todo perfectamente.', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+(5, 9, 8, 'Berlin es fascinante desde el principio.', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+(3, 10, 7, 'El episodio con el francotirador es tenso.', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
+
+-- Reviews de episodios de Game of Thrones
+INSERT OR IGNORE INTO episode_review (user_id, episode_id, rating, review_text, created_at, updated_at) VALUES
+(3, 18, 9, 'Winter Is Coming establece un mundo increíble.', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+(4, 19, 8, 'Ned Stark como Hand del Rey es político fascinante.', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
+
+-- Reviews de episodios de Stranger Things
+INSERT OR IGNORE INTO episode_review (user_id, episode_id, rating, review_text, created_at, updated_at) VALUES
+(1, 23, 10, 'El primer episodio establece todos los misterios.', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+(5, 24, 8, 'El episodio con la radios es escalofriante.', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
+
+-- Reviews de episodios de The Office
+INSERT OR IGNORE INTO episode_review (user_id, episode_id, rating, review_text, created_at, updated_at) VALUES
+(1, 28, 8, 'El piloto establece el estilo mockumentary.', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+(3, 29, 7, 'Diversity Day es incómodamente gracioso.', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
