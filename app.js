@@ -797,6 +797,9 @@ async function mostrarDetallesPelicula(id) {
 async function mostrarDetallesSerie(id) {
   try {
     const serie = await fetchAPI(`${API_URL}/series/${id}`, 'GET');
+    const reviews = await fetchAPI(`${API_URL}/series/${id}/reviews`, 'GET');
+    const avg = await fetchAPI(`${API_URL}/series/${id}/average-rating`, 'GET');
+    
     if (!serie || serie.error) {
       alert('No se pudieron obtener los detalles de la serie');
       return;
@@ -805,6 +808,30 @@ async function mostrarDetallesSerie(id) {
     const esFavorito = userFavSeriesIds.includes(id);
     const posterUrl = serie.poster_url || 'https://via.placeholder.com/300x450?text=No+Image';
     const episodiosPorTemporada = serie.episodes_by_season || {};
+    
+    // Procesar ratings
+    const averageRating = avg && typeof avg.average_rating === 'number' ? avg.average_rating : null;
+    const totalReviews = avg && typeof avg.total_reviews === 'number' ? avg.total_reviews : 0;
+    const reviewsList = Array.isArray(reviews) ? reviews : [];
+
+    // Formulario para agregar comentario (solo si está autenticado)
+    const commentFormHTML = authToken ? `
+      <div style="margin-top:1.5rem; padding:1rem; background:rgba(255,107,157,0.1); border-radius:8px;">
+        <h4 style="color:#ff6b9d; margin-bottom:0.8rem;">Agregar tu comentario</h4>
+        <form onsubmit="enviarComentarioSerie(event, ${serie.id})" style="display:grid;gap:0.5rem;">
+          <label for="serie-review-rating">Tu nota (1-10)</label>
+          <input id="serie-review-rating" type="number" min="1" max="10" required style="padding:0.5rem; border:1px solid #ddd; border-radius:4px;">
+          <label for="serie-review-text">Tu comentario</label>
+          <textarea id="serie-review-text" rows="3" placeholder="¿Qué te pareció esta serie?" style="padding:0.5rem; border:1px solid #ddd; border-radius:4px; resize:vertical;"></textarea>
+          <button type="submit" class="btn btn-primary" style="background:#ff6b9d; border-color:#ff6b9d;">Publicar comentario</button>
+        </form>
+      </div>
+    ` : `
+      <div style="margin-top:1.5rem; padding:1rem; background:rgba(255,107,157,0.1); border-radius:8px; text-align:center;">
+        <p style="color:#666;">Inicia sesión para comentar y valorar esta serie.</p>
+        <button class="btn btn-primary" onclick="cerrarDetalles(); navigateTo('login');" style="background:#ff6b9d; border-color:#ff6b9d;">Iniciar Sesión</button>
+      </div>
+    `;
 
     const detailsHTML = `
       <div class="movie-detail">
@@ -820,6 +847,31 @@ async function mostrarDetallesSerie(id) {
           </div>
           <h3 style="color: #667eea; margin-top: 1.5rem; margin-bottom: 0.8rem;">Sinopsis</h3>
           <div class="movie-description">${serie.description || 'No hay descripción disponible'}</div>
+          
+          <!-- Ratings y Reviews de la Serie -->
+          <div style="margin-top: 1.5rem; padding: 1rem; background: rgba(102, 126, 234, 0.1); border-radius: 8px;">
+            <div style="display:flex;align-items:center;gap:1rem;margin-bottom:1rem;">
+              <span class="meta-value rating-large">${averageRating !== null ? `⭐ ${averageRating}/10` : 'Sin valoraciones'} (${totalReviews})</span>
+            </div>
+            ${reviewsList.length > 0 ? `
+              <h4 style="color:#667eea;margin-bottom:0.8rem;">Comentarios de usuarios</h4>
+              ${reviewsList.slice(0, 5).map(r => `
+                <div style="background:white; padding:0.75rem; border-radius:6px; margin-bottom:0.5rem; border-left:3px solid #667eea;">
+                  <div style="display:flex;justify-content:space-between;align-items:center;">
+                    <strong>${r.username || 'Usuario'}</strong>
+                    <span>⭐ ${r.rating}/10</span>
+                  </div>
+                  <p style="margin:0.5rem 0 0 0;font-size:0.9rem;">${r.review_text || 'Sin comentario'}</p>
+                  ${currentUser && Number(currentUser.id) === Number(r.user_id) ? `
+                    <button class="btn btn-small" style="margin-top:0.5rem; background:#ff4444; color:white; border:none; padding:0.3rem 0.6rem; border-radius:4px; cursor:pointer;" onclick="eliminarComentarioSerie(${r.id}, ${serie.id})">Eliminar mi comentario</button>
+                  ` : ''}
+                </div>
+              `).join('')}
+            ` : '<p style="color:#666;">Aún no hay comentarios. ¡Sé el primero en valorar esta serie!</p>'}
+          </div>
+          
+          ${commentFormHTML}
+          
           <div class="movie-controls">
             <button class="btn btn-primary" onclick="cerrarDetalles()">Cerrar</button>
             <button class="btn ${esFavorito ? 'btn-danger' : 'btn-favorite'}" onclick="toggleFavorito('serie', ${serie.id})">
@@ -848,6 +900,37 @@ async function mostrarDetallesSerie(id) {
   } catch (error) {
     console.error('Error al obtener detalles de serie:', error);
     alert('Error al cargar los detalles de la serie');
+  }
+}
+
+// ==================== FUNCIONES: REVIEWS DE SERIES ====================
+async function enviarComentarioSerie(event, seriesId) {
+  event.preventDefault();
+  const ratingInput = document.getElementById('serie-review-rating');
+  const textInput = document.getElementById('serie-review-text');
+  if (!ratingInput) return;
+
+  const payload = {
+    series_id: seriesId,
+    rating: Number(ratingInput.value),
+    review_text: textInput ? textInput.value : '',
+  };
+
+  const response = await fetchAPI(`${API_URL}/series/reviews`, 'POST', payload, authToken);
+  if (response) {
+    alert('Comentario publicado con éxito');
+    // Recargar los detalles de la serie para ver el nuevo comentario
+    mostrarDetallesSerie(seriesId);
+  }
+}
+
+async function eliminarComentarioSerie(reviewId, seriesId) {
+  if (!confirm('¿Seguro que quieres eliminar tu comentario?')) return;
+  const response = await fetchAPI(`${API_URL}/series/reviews/${reviewId}`, 'DELETE', null, authToken);
+  if (response) {
+    alert('Comentario eliminado');
+    // Recargar los detalles de la serie
+    mostrarDetallesSerie(seriesId);
   }
 }
 
