@@ -39,6 +39,8 @@ def _load_env_file(env_path):
                 os.environ[key] = value
 
 
+# Cargar .env primero (con valores reales), luego .env.example como fallback
+_load_env_file(os.path.join(basedir, '.env'))
 _load_env_file(os.path.join(basedir, '.env.example'))
 app = Flask(__name__, static_url_path='', static_folder='.')
 app.config['SECRET_KEY'] = 'tu_clave_secreta'
@@ -365,6 +367,12 @@ def deduplicate_movies_by_aliases():
                 if not existing_fav:
                     db.session.add(Favorites(movie_id=keeper.id, user_id=fav.user_id, created_at=fav.created_at))
                 db.session.delete(fav)
+
+            # Reasignar reviews de películas a la película principal
+            dup_reviews = Review.query.filter_by(movie_id=duplicate.id).all()
+            for review in dup_reviews:
+                review.movie_id = keeper.id
+                db.session.add(review)
 
             db.session.delete(duplicate)
             merged_count += 1
