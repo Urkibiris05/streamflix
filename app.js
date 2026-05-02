@@ -250,8 +250,16 @@ function renderPeliculasSection() {
   const container = document.getElementById('content-type-container');
   if (!container) return;
 
-  container.innerHTML = '<div id="peliculas-container" class="peliculas-grid"></div>';
+  container.innerHTML = `
+    <div class="peliculas-search-bar" style="margin-bottom:1rem; display:flex; gap:0.75rem; flex-wrap:wrap; align-items:center;">
+      <input id="busqueda" type="search" placeholder="Buscar películas..." style="flex:1; padding:0.75rem; border:1px solid #ddd; border-radius:8px;" />
+      <span style="color:#666; font-size:0.95rem;">Resultados: ${peliculasData ? peliculasData.length : 0}</span>
+    </div>
+    <div id="peliculas-container" class="peliculas-grid"></div>
+  `;
+
   renderPeliculasGrid(peliculasData || [], 'peliculas-container');
+  setupBusqueda(peliculasData || []);
 }
 
 function renderSeriesSection() {
@@ -484,16 +492,57 @@ async function eliminarSerie(id) {
 // ==================== RENDERIZACIÓN: FAVORITOS ====================
 async function renderFavoritos() {
   const content = document.getElementById('content');
-  content.innerHTML = `<div class="container"><h2>❤️ Mis Favoritos</h2><div id="favoritos-container" class="peliculas-grid"></div></div>`;
+  content.innerHTML = `
+    <div class="container">
+      <h2>❤️ Mis Favoritos</h2>
+      <div id="favoritos-movies-container" style="margin-bottom:2rem;"></div>
+      <div id="favoritos-series-container"></div>
+    </div>
+  `;
 
   const favoritos = await fetchAPI(`${API_URL}/favoritos`, 'GET', null, authToken);
-  
-  // Forzamos que use el contenedor de favoritos
+  const seriesFavoritas = await fetchAPI(`${API_URL}/series-favoritos`, 'GET', null, authToken);
+
+  const moviesContainer = document.getElementById('favoritos-movies-container');
+  const seriesContainer = document.getElementById('favoritos-series-container');
+
   if (favoritos && favoritos.length > 0) {
     userFavIds = favoritos.map(f => f.id);
+    moviesContainer.innerHTML = `<h3>Películas favoritas</h3><div id="favoritos-container" class="peliculas-grid"></div>`;
     renderPeliculasGrid(favoritos, 'favoritos-container');
   } else {
-    document.getElementById('favoritos-container').innerHTML = "<p>No tienes favoritos.</p>";
+    moviesContainer.innerHTML = '<h3>Películas favoritas</h3><p>No tienes películas favoritas.</p>';
+  }
+
+  if (seriesFavoritas && seriesFavoritas.length > 0) {
+    userFavSeriesIds = seriesFavoritas.map(s => s.id);
+    const section = document.createElement('div');
+    section.innerHTML = '<h3>Series favoritas</h3><div id="favoritos-series-grid" class="peliculas-grid"></div>';
+    seriesContainer.appendChild(section);
+
+    const grid = document.getElementById('favoritos-series-grid');
+    seriesFavoritas.forEach(s => {
+      const card = document.createElement('div');
+      card.className = 'pelicula-card card-highlight';
+      card.style.cursor = 'pointer';
+      card.style.border = '2px solid #ff6b9d';
+      card.onclick = () => mostrarDetalles('serie', s.id);
+      card.innerHTML = `
+        <div style="position:relative;">
+          <img src="${s.poster_url}" alt="${s.title}" style="cursor:pointer;">
+          <span style="position:absolute; top:8px; right:8px; background:#ff6b9d; color:white; padding:0.3rem 0.6rem; border-radius:4px; font-size:0.8rem; font-weight:bold;">SERIE</span>
+        </div>
+        <div class="card-content">
+          <h3>${s.title}</h3>
+          <div class="card-buttons">
+            <button class="btn btn-danger" onclick="event.stopPropagation(); toggleFavorito('serie', ${s.id})">❌ Quitar</button>
+          </div>
+        </div>
+      `;
+      grid.appendChild(card);
+    });
+  } else {
+    seriesContainer.innerHTML = '<h3>Series favoritas</h3><p>No tienes series favoritas.</p>';
   }
 }
 
@@ -720,29 +769,39 @@ async function toggleFavorito(typeOrMovieId, maybeItemId = null) {
     return;
   }
 
+  const isFavorite = type === 'serie' ? userFavSeriesIds.includes(itemId) : userFavIds.includes(itemId);
   const endpoint = type === 'serie' ? '/series-favoritos' : '/favoritos';
-  const payload = type === 'serie' ? { series_id: itemId } : { movie_id: itemId };
-  const response = await fetchAPI(`${API_URL}${endpoint}`, 'POST', payload, authToken);
-  
-  if (response) {
+  const method = isFavorite ? 'DELETE' : 'POST';
+  const url = isFavorite ? `${API_URL}${endpoint}/${itemId}` : `${API_URL}${endpoint}`;
+  const body = isFavorite ? null : (type === 'serie' ? { series_id: itemId } : { movie_id: itemId });
+
+  const response = await fetchAPI(url, method, body, authToken);
+  if (!response) return;
+
+  if (isFavorite) {
+    const mensaje = response.mensaje || 'Eliminado de favoritos.';
+    alert(mensaje);
+    if (type === 'serie') {
+      userFavSeriesIds = userFavSeriesIds.filter(id => id !== itemId);
+    } else {
+      userFavIds = userFavIds.filter(id => id !== itemId);
+    }
+  } else {
     const mensaje = response.mensaje || 'Elemento añadido a favoritos.';
     alert(mensaje);
-
     if (type === 'serie') {
       if (!userFavSeriesIds.includes(itemId)) userFavSeriesIds.push(itemId);
     } else {
       if (!userFavIds.includes(itemId)) userFavIds.push(itemId);
     }
+  }
 
-    // Si estamos en la página de favoritos, actualizar la vista
-    if (currentRoute === routes.favoritos) {
-      renderFavoritos();
-    }
-
-    // Actualizar el botón visualmente
-    if (type === 'pelicula') {
-      updateFavoriteButton(itemId);
-    }
+  if (currentRoute === routes.favoritos) {
+    renderFavoritos();
+  } else if (type === 'serie') {
+    renderSeriesSection();
+  } else {
+    renderPeliculasSection();
   }
 }
 

@@ -251,6 +251,18 @@ def ensure_schema_compatibility():
 
         conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS idx_movie_source_external_id ON movie (source, external_id)"))
 
+        series_columns = {row[1] for row in conn.execute(text('PRAGMA table_info(series)')).fetchall()}
+        if 'external_id' not in series_columns:
+            conn.execute(text('ALTER TABLE series ADD COLUMN external_id VARCHAR(120)'))
+        if 'source' not in series_columns:
+            conn.execute(text("ALTER TABLE series ADD COLUMN source VARCHAR(50) DEFAULT 'local'"))
+
+        conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS idx_series_source_external_id ON series (source, external_id)"))
+
+        episode_columns = {row[1] for row in conn.execute(text('PRAGMA table_info(episode)')).fetchall()}
+        if 'external_id' not in episode_columns:
+            conn.execute(text('ALTER TABLE episode ADD COLUMN external_id VARCHAR(120)'))
+
         # Verificar y crear tablas para reviews de series y episodios
         tables = {row[0] for row in conn.execute(text("SELECT name FROM sqlite_master WHERE type='table'")).fetchall()}
         
