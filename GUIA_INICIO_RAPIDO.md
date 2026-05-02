@@ -20,6 +20,8 @@ La aplicación usa SQLite local por defecto y crea el archivo `streamflix.db` al
 
 No necesitas ejecutar comandos de MySQL ni crear la base de datos manualmente.
 
+Al primer arranque, el backend crea usuarios base, sincroniza películas y series desde TMDB y elimina contenido local que no sea de origen TMDB.
+
 ### Verificación
 ```bash
 python -c "import sqlite3; conn=sqlite3.connect('streamflix.db'); cur=conn.cursor(); cur.execute('SELECT name FROM sqlite_master WHERE type=\'table\''); print(cur.fetchall()); conn.close()"
@@ -54,7 +56,7 @@ python app.py
 ### 1️⃣ Ir a http://localhost:5000
 
 ### 2️⃣ Iniciar Sesión con usuarios de prueba
-Puedes usar las cuentas incluidas en `seed.sql`:
+Puedes usar las cuentas base que crea automáticamente la aplicación:
 
 - **Administrador**
   - Usuario: `admin`
@@ -67,22 +69,19 @@ Puedes usar las cuentas incluidas en `seed.sql`:
   - Contraseña: `demo123`
 
 ### 3️⃣ Ver Películas
-- Verás todas las películas de la BD
+- Verás el catálogo sincronizado desde TMDB
+- Alterna entre Películas y Series en la pestaña superior
 - Busca por título en el input
 - Clica ❤️ para agregar favoritos
 
 ### 4️⃣ Panel Admin (si es admin)
 - Ve a "⚙️ Administración"
-- Crea, edita o elimina películas
+- Alterna entre "Gestionar Películas" y "Gestionar Series"
+- Sincroniza contenido desde TMDB o elimina elementos que ya no quieras mostrar
 
-### 4️⃣ Ver Películas
-- Verás todas las películas de la BD
-- Busca por título en el input
-- Clica ❤️ para agregar favoritos
-
-### 5️⃣ Panel Admin (si es admin)
-- Ve a "⚙️ Administración"
-- Crea, edita o elimina películas
+### 5️⃣ Validación Automática
+- Ejecuta `python smoke_test_streamflix.py` para comprobar login, catálogo, favoritos, reviews y sincronización
+- Ejecuta `python smoke_test_streamflix.py --destructive` para probar borrado y restauración controlada
 
 ---
 
@@ -120,7 +119,9 @@ streamflix/
 ├── index.html                ✅ HTML + CSS (700+ líneas)
 ├── config.py                 ✅ Configuración
 ├── schema.sql                ✅ Esquema BD
-├── seed_data.sql             ✅ Datos de prueba
+├── seed_data.sql             ✅ Datos de prueba históricos
+├── seed.sql                  ✅ Seed legado / referencia
+├── smoke_test_streamflix.py  ✅ Smoke test funcional
 ├── requirements.txt          ✅ Dependencias Python
 ├── README.md                 ✅ Documentación principal
 ├── EJEMPLOS_API.md           ✅ Ejemplos de endpoints

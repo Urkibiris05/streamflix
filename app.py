@@ -1339,6 +1339,7 @@ def eliminar_pelicula(id):
         
         # Eliminar favoritos asociados primero
         Favorites.query.filter_by(movie_id=id).delete()
+        Review.query.filter_by(movie_id=id).delete(synchronize_session=False)
         
         db.session.delete(pelicula)
         db.session.commit()

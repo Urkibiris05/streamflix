@@ -1,6 +1,6 @@
 # 📊 ESTADO DEL PROYECTO - STREAMFLIX
 
-**Fecha:** 4 de Abril, 2026  
+**Fecha:** 2 de Mayo, 2026  
 **Fecha de Entrega:** 16 de Abril, 2026  
 **Progreso:** ✅ **100% COMPLETADO**
 
@@ -8,7 +8,7 @@
 
 ## 🎯 OBJETIVO DEL PROYECTO
 
-Desarrollar una **Single Page Application (SPA)** con arquitectura de tres capas para una plataforma de streaming de películas y series, con sistema de registro de usuarios, autenticación y módulo CRUD de administración.
+Desarrollar una **Single Page Application (SPA)** con arquitectura de tres capas para una plataforma de streaming de películas y series, con sistema de registro de usuarios, autenticación, catálogo sincronizado desde TMDB y panel de administración separado para películas y series.
 
 ---
 
@@ -19,8 +19,8 @@ Desarrollar una **Single Page Application (SPA)** con arquitectura de tres capas
 | Requisito | Estado | Evidencia |
 |-----------|--------|-----------|
 | **Frontend SPA** | ✅ Completo | `app.js` + `index.html` (1200+ líneas) |
-| **Backend API REST** | ✅ Completo | `app.py` (500+ líneas, 11 endpoints) |
-| **Base de Datos SQL** | ✅ Completo | `schema.sql` (56 líneas, 3 tablas) |
+| **Backend API REST** | ✅ Completo | `app.py` (500+ líneas, 28 endpoints) |
+| **Base de Datos SQL** | ✅ Completo | `schema.sql` (56 líneas, 8 tablas) |
 | **Persistencia de Datos** | ✅ Completo | SQLite local + SQLAlchemy ORM |
 
 ### 2️⃣ Funcionalidades Requeridas
@@ -30,11 +30,13 @@ Desarrollar una **Single Page Application (SPA)** con arquitectura de tres capas
 | **Sistema de Registro** | ✅ Completo | `POST /api/registro` |
 | **Sistema de Login** | ✅ Completo | `POST /api/login` |
 | **CRUD: Read (Leer)** | ✅ Completo | `GET /api/peliculas`, `GET /api/peliculas/<id>` |
-| **CRUD: Create (Crear)** | ✅ Completo | `POST /api/peliculas` (admin) |
-| **CRUD: Update (Actualizar)** | ✅ Completo | `PUT /api/peliculas/<id>` (admin) |
-| **CRUD: Delete (Eliminar)** | ✅ Completo | `DELETE /api/peliculas/<id>` (admin) |
-| **Sistema de Favoritos** | ✅ Completo | `POST/GET/DELETE /api/favoritos` |
+| **CRUD: Create (Crear)** | ✅ Integrado | Sincronización TMDB (`POST /api/sync/peliculas`, `POST /api/sync/series`) |
+| **CRUD: Update (Actualizar)** | ✅ Integrado | Upsert automático desde TMDB |
+| **CRUD: Delete (Eliminar)** | ✅ Completo | `DELETE /api/peliculas/<id>`, `DELETE /api/series/<id>` |
+| **Sistema de Favoritos** | ✅ Completo | `POST/GET/DELETE /api/favoritos`, `POST/GET/DELETE /api/series-favoritos` |
+| **Reviews y Ratings** | ✅ Completo | `GET/POST/DELETE /api/reviews`, `GET/POST/DELETE /api/series/reviews` |
 | **Búsqueda Client-Side** | ✅ Completo | Filtrado por título en tiempo real |
+| **Sincronización TMDB** | ✅ Completo | `POST /api/sync/peliculas`, `POST /api/sync/series` |
 
 ---
 
@@ -47,7 +49,9 @@ streamflix/
 ├── 📄 index.html                [CREADO] HTML + CSS integrado
 ├── 📄 config.py                 [CREADO] Configuración separada
 ├── 📄 schema.sql                [EXISTENTE] Esquema BD mejorado
+├── 📄 seed.sql                  [EXISTENTE] Seed legado / referencia histórica
 ├── 📄 seed_data.sql             [CREADO] Datos de prueba
+├── 📄 smoke_test_streamflix.py  [CREADO] Smoke test funcional
 ├── 📄 requirements.txt           [ACTUALIZADO] Dependencias Python
 ├── 📄 README.md                 [CREADO] Documentación principal
 ├── 📄 EJEMPLOS_API.md           [CREADO] Guía de endpoints con ejemplos
@@ -73,13 +77,28 @@ streamflix/
 ✅ Movie
    - id, title, description, director
    - genre, release_date, duration_minutes
-   - rating, poster_url, video_url
+   - rating, poster_url, video_url, external_id, source
    - created_at, updated_at
-   - Método: to_dict()
 
-✅ Favorite
-   - Relación muchos-a-muchos User-Movie
-   - Cascade delete
+✅ Series
+   - id, title, description, director
+   - genre, release_date, poster_url, external_id, source
+   - created_at, updated_at
+
+✅ Episode
+   - series_id, title, description
+   - season, episode_number, air_date
+   - duration_minutes, video_url
+
+✅ SeriesReview / EpisodeReview
+   - Reviews y ratings para series y episodios
+
+✅ Favorites / SeriesFavorites
+   - Favoritos de películas y series
+
+✅ SyncState
+   - Control de intervalos de sincronización
+   - created_at, updated_at
 ```
 
 #### Middleware & Decoradores
@@ -95,17 +114,34 @@ AUTENTICACIÓN:
 ✅ POST   /api/registro      → Registrar usuario (Bcrypt)
 ✅ POST   /api/login         → Login con JWT (24hs)
 
-PELÍCULAS (CRUD):
+PELÍCULAS:
 ✅ GET    /api/peliculas     → Listar todas
 ✅ GET    /api/peliculas/<id>→ Obtener por ID
-✅ POST   /api/peliculas     → Crear (admin)
-✅ PUT    /api/peliculas/<id>→ Actualizar (admin)
 ✅ DELETE /api/peliculas/<id>→ Eliminar (admin)
+✅ POST   /api/sync/peliculas→ Sincronizar desde TMDB (admin)
+
+SERIES:
+✅ GET    /api/series        → Listar todas
+✅ GET    /api/series/<id>   → Obtener por ID
+✅ DELETE /api/series/<id>   → Eliminar (admin)
+✅ POST   /api/sync/series   → Sincronizar desde TMDB (admin)
 
 FAVORITOS:
 ✅ POST   /api/favoritos     → Agregar (user)
 ✅ GET    /api/favoritos     → Listar mis favoritos (user)
 ✅ DELETE /api/favoritos/<id>→ Eliminar (user)
+
+✅ POST   /api/series-favoritos     → Agregar serie (user)
+✅ GET    /api/series-favoritos     → Listar mis series (user)
+✅ DELETE /api/series-favoritos/<id>→ Eliminar serie (user)
+
+REVIEWS:
+✅ POST   /api/reviews       → Crear review película (user)
+✅ GET    /api/peliculas/<id>/reviews → Reviews película
+✅ GET    /api/peliculas/<id>/average-rating → Rating promedio película
+✅ POST   /api/series/reviews → Crear review serie (user)
+✅ GET    /api/series/<id>/reviews → Reviews serie
+✅ GET    /api/series/<id>/average-rating → Rating promedio serie
 ```
 
 ### Frontend (app.js + index.html) - 1200+ líneas
@@ -115,9 +151,9 @@ FAVORITOS:
 ✅ Página de Inicio          → Bienvenida con botones
 ✅ Página de Login           → Formulario de autenticación
 ✅ Página de Registro        → Formulario de creación cuenta
-✅ Catálogo de Películas     → Grid responsivo
-✅ Mis Favoritos             → Películas guardadas
-✅ Panel Administrativo      → CRUD para admins
+✅ Catálogo de Películas/Series → Tabs con listado sincronizado
+✅ Mis Favoritos             → Películas y series guardadas
+✅ Panel Administrativo      → CRUD y sincronización para admins
 ```
 
 #### Funcionalidades JavaScript
@@ -127,8 +163,9 @@ FAVORITOS:
 ✅ Persistencia              → localStorage para tokens
 ✅ API Calls                 → Función fetchAPI genérica
 ✅ Búsqueda                  → Filtrado en tiempo real
-✅ CRUD Completo             → Crear, leer, actualizar, eliminar
-✅ Favoritos                 → Agregar/remover películas
+✅ CRUD Completo             → Lectura + eliminación + sync externa
+✅ Favoritos                 → Agregar/remover películas y series
+✅ Reviews                   → Comentarios y ratings para películas y series
 ✅ Manejo de Errores         → Alerts y validaciones
 ✅ Diseño Responsivo         → CSS Media Queries
 ```
@@ -153,18 +190,31 @@ FAVORITOS:
    - Timestamps: created_at, updated_at
    - is_active para soft-delete
 
-✅ Tabla movie (10 campos)
+✅ Tabla movie (12 campos)
    - Primary Key: id
    - Text: description, director
    - Float: rating
    - URLs: poster_url, video_url
+   - external_id, source
    - Timestamps: created_at, updated_at
+
+✅ Tablas series / episode / reviews
+   - Series sincronizadas desde TMDB
+   - Episodios por serie
+   - Reviews de series y episodios
 
 ✅ Tabla favorites
    - Primary Key: (user_id, movie_id)
    - Foreign Keys: delete cascade
    - Composite: one-to-many
    - Timestamp: created_at
+
+✅ Tabla series_favorites
+   - Primary Key: (series_id, user_id)
+   - Foreign Keys: delete cascade
+
+✅ Tabla sync_state
+   - Control de intervalos de sincronización
 ```
 
 ---
@@ -276,18 +326,18 @@ FAVORITOS:
 ## 📈 ESTADÍSTICAS DEL CÓDIGO
 
 ```
-Total de Líneas de Código:    ~2500+
+Total de Líneas de Código:    ~3000+
 ├── Backend (app.py)           ~500
 ├── Frontend (app.js)          ~600
 ├── HTML + CSS (index.html)    ~700
 ├── Documentación              ~1200
 └── SQL + Config               ~200
 
-Archivos Entregados:          12
-Endpoints Implementados:      11
-Modelos de Datos:              3
-Tablas en BD:                  3
-Testcases Cubiertos:         20+
+Archivos Entregados:          13
+Endpoints Implementados:      28
+Modelos de Datos:              8
+Tablas en BD:                  8
+Testcases Cubiertos:         20+ (más smoke test funcional)
 ```
 
 ---
@@ -312,14 +362,16 @@ Ver `GUIA_INICIO_RAPIDO.md`
 ## ✅ CHECKLIST FINAL
 
 ### Backend
-- [x] Models (User, Movie, Favorite)
-- [x] Endpoints REST (11 total)
+- [x] Models (User, Movie, Series, Episode, reviews y favoritos)
+- [x] Endpoints REST (28 total)
 - [x] Autenticación JWT
 - [x] Autorización por roles
 - [x] Hasheo Bcrypt
 - [x] Manejo de errores
 - [x] CORS configurado
 - [x] Documentación de código
+- [x] Sincronización TMDB de películas y series
+- [x] Smoke test funcional automatizado
 
 ### Frontend
 - [x] SPA con rutas
@@ -327,12 +379,12 @@ Ver `GUIA_INICIO_RAPIDO.md`
 - [x] Formularios funcionales
 - [x] Integración con API
 - [x] Búsqueda local
-- [x] Gestión de favoritos
-- [x] Panel administrativo
+- [x] Gestión de favoritos de películas y series
+- [x] Panel administrativo con pestañas
 - [x] Diseño responsivo
 
 ### Base de Datos
-- [x] 3 tablas bien diseñadas
+- [x] 8 tablas bien diseñadas
 - [x] Foreign keys y constraints
 - [x] Indexes óptimos
 - [x] Datos de prueba

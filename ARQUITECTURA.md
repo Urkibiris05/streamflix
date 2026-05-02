@@ -36,8 +36,10 @@
 │  │  ┌────────────────────────────────────────────────────┐  │ │
 │  │  │  Rutas (Endpoints)                                 │  │ │
 │  │  │  - /api/registro, /api/login                      │  │ │
-│  │  │  - /api/peliculas (CRUD)                          │  │ │
-│  │  │  - /api/favoritos                                 │  │ │
+│  │  │  - /api/peliculas, /api/series                    │  │ │
+│  │  │  - /api/favoritos, /api/series-favoritos          │  │ │
+│  │  │  - /api/reviews, /api/series/reviews              │  │ │
+│  │  │  - /api/sync/peliculas, /api/sync/series          │  │ │
 │  │  └────────────────────────────────────────────────────┘  │ │
 │  │                                                          │ │
 │  │  ┌────────────────────────────────────────────────────┐  │ │
@@ -45,6 +47,8 @@
 │  │  │  - Validaciones de datos                          │  │ │
 │  │  │  - Hasheo de contraseñas (Bcrypt)                 │  │ │
 │  │  │  - Generación de tokens (JWT)                     │  │ │
+│  │  │  - Sincronización incremental desde TMDB          │  │ │
+│  │  │  - Purga de contenido local no-TMDB               │  │ │
 │  │  └────────────────────────────────────────────────────┘  │ │
 │  └──────────────────────────────────────────────────────────┘ │
 └─────────────────────────────────────────────────────────────┘
@@ -58,22 +62,31 @@
 │  │  ┌────────────────────────────────────────────────────┐  │ │
 │  │  │  Modelos                                          │  │ │
 │  │  │  - User (usuarios)                                │  │ │
-│  │  │  - Movie (películas/series)                       │  │ │
-│  │  │  - Favorite (favoritos)                           │  │ │
+│  │  │  - Movie (películas TMDB)                         │  │ │
+│  │  │  - Series / Episode                               │  │ │
+│  │  │  - Favorites / SeriesFavorites                   │  │ │
+│  │  │  - Reviews / SeriesReview / EpisodeReview        │  │ │
+│  │  │  - SyncState                                      │  │ │
 │  │  └────────────────────────────────────────────────────┘  │ │
 │  └──────────────────────────────────────────────────────────┘ │
 │                              ↓                                  │
 │  ┌──────────────────────────────────────────────────────────┐ │
 │  │  SQLite Database (`streamflix.db`)                       │ │
 │  │  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐   │ │
-│  │  │ user         │  │ movie        │  │ favorites    │   │ │
-│  │  │ - id         │  │ - id         │  │ - user_id (FK)   │ │
-│  │  │ - username   │  │ - title      │  │ - movie_id (FK)  │ │
-│  │  │ - email      │  │ - genre      │  │ - created_at │   │ │
-│  │  │ - password   │  │ - rating     │  └──────────────┘   │ │
-│  │  │ - role       │  │ - director   │                      │ │
-│  │  │ - created_at │  │ - created_at │                      │ │
-│  │  └──────────────┘  └──────────────┘                      │ │
+│  │  │ user         │  │ movie        │  │ series       │   │ │
+│  │  │ - id         │  │ - id         │  │ - id         │   │ │
+│  │  │ - username   │  │ - title      │  │ - title      │   │ │
+│  │  │ - email      │  │ - source     │  │ - source     │   │ │
+│  │  │ - password   │  │ - external_id│  │ - external_id│   │ │
+│  │  │ - role       │  │ - created_at │  │ - created_at │   │ │
+│  │  │ - created_at │  │ - updated_at │  │ - updated_at │   │ │
+│  │  └──────────────┘  └──────────────┘  └──────────────┘   │ │
+│  │  ┌──────────────┐  ┌────────────────┐  ┌──────────────┐ │ │
+│  │  │ favorites    │  │ series_favs    │  │ sync_state   │ │ │
+│  │  │ - user_id(FK) │  │ - user_id(FK)  │  │ - key        │ │ │
+│  │  │ - movie_id(FK)│  │ - series_id(FK)│  │ - value      │ │ │
+│  │  │ - created_at │  │ - created_at   │  │ - updated_at │ │ │
+│  │  └──────────────┘  └────────────────┘  └──────────────┘ │ │
 │  └──────────────────────────────────────────────────────────┘ │
 └─────────────────────────────────────────────────────────────┘
 ```
@@ -102,8 +115,8 @@
       │  5. Guarda token en localStorage                 │
       │  6. Almacena datos del usuario                   │
       │                                                   │
-      │  7. Hace petición con token en header            │
-      │     GET /api/peliculas                           │
+    │  7. Hace petición con token en header            │
+    │     GET /api/peliculas / GET /api/series         │
       │     Authorization: Bearer <token>                │
       │──────────────────────────────────────────────────>
       │                                                   │
@@ -114,7 +127,7 @@
       │  <──────────────────────────────────────────────
       │  [peliculas_json]                                │
       │                                                   │
-      │  11. Renderiza películas en el DOM               │
+    │  11. Renderiza catálogo en el DOM                │
       │                                                   │
 ```
 
@@ -133,7 +146,7 @@
 │  Backend (Flask - app.py)           │
 │  @app.route('/api/peliculas')      │
 │  def obtener_peliculas():           │
-│    - peliculas = Movie.query.all()  │ ← 2. Consulta BD
+│    - peliculas = Movie.query.filter_by(source='tmdb').all()  │ ← 2. Consulta BD
 │    - return jsonify(...)             │
 └─────────────────────────────────────┘
           │
@@ -181,44 +194,39 @@
 
 ---
 
-## ➕ FLUJO: CREAR PELÍCULA (CREATE) - ADMIN
+## 🔄 FLUJO: SINCRONIZAR PELÍCULAS (SYNC) - ADMIN
 
 ```
 ┌─────────────────────────────────┐
 │  Admin Panel Frontend            │
-│  - Completa formulario           │
-│  - Clica "Crear Película"        │
+│  - Clica "Actualizar desde API externa" │
 └─────────────────────────────────┘
           │
-          │ 1. POST /api/peliculas
+        │ 1. POST /api/sync/peliculas
           │    Headers: Authorization: Bearer <token>
-          │    Body: {title, genre, ...}
+        │    Body: vacío
           ↓
 ┌─────────────────────────────────────────┐
 │  Backend (Flask)                        │
-│  @app.route('/api/peliculas', ...)      │
+│  @app.route('/api/sync/peliculas', ...) │
 │  @token_required                        │  ← Verifica JWT
 │  @admin_required                        │  ← Verifica rol admin
-│  def crear_pelicula(current_user):      │
+│  def sincronizar_peliculas_api(current_user): │
 └─────────────────────────────────────────┘
           │
-          │ 2. Valida datos
-          │    - Título requerido
-          │    - Valores numéricos correctos
-          │
-          │ 3. pelicula = Movie(...)
-          │    db.session.add(pelicula)
-          │    db.session.commit()
+        │ 2. Descarga catálogo desde TMDB
+        │ 3. Aplica upsert por external_id/source
+        │ 4. Actualiza películas, series y sync_state
           ↓
 ┌──────────────────────────────────────┐
 │  SQLite Database (`streamflix.db`)     │
-│  INSERT INTO movie (...)             │
-│  VALUES (...)                        │
-│  → Nueva película agregada           │
+│  INSERT/UPDATE movie                 │
+│  INSERT/UPDATE series                │
+│  → Catálogo actualizado              │
 └──────────────────────────────────────┘
           ↑
-          │ 4. Retorna película creada
-          │    Status: 201 Created
+        │ 4. Retorna resultado de sincronización
+        │    Status: 200 OK
           │
 ┌────────────────────────────────────┐
 │  Frontend                          │

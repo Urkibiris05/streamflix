@@ -1,5 +1,7 @@
 # StreamFlix - Documentación API
 
+La API expone un catálogo sincronizado desde TMDB para películas y series. Las altas y ediciones manuales se mantienen deshabilitadas; la gestión real del catálogo se hace mediante sincronización y borrado administrado.
+
 ## Authentication
 - Login: `POST /api/login`
 - Register: `POST /api/registro`
@@ -13,7 +15,7 @@
 ```
 GET /api/peliculas
 ```
-**Respuesta**: Array de películas
+**Respuesta**: Array de películas sincronizadas desde TMDB
 
 ### Obtener película por ID
 ```
@@ -39,6 +41,7 @@ Body:
   "video_url": "string"
 }
 ```
+**Respuesta esperada**: `403 Forbidden` porque la creación manual está deshabilitada.
 
 ### Editar película (Solo Admin)
 ```
@@ -52,10 +55,58 @@ Body: (campos a actualizar)
   ...
 }
 ```
+**Respuesta esperada**: `403 Forbidden` porque la edición manual está deshabilitada.
 
 ### Eliminar película (Solo Admin)
 ```
 DELETE /api/peliculas/<id>
+Authorization: Bearer token
+```
+
+### Sincronizar películas (Solo Admin)
+```
+POST /api/sync/peliculas
+Authorization: Bearer token
+```
+
+---
+
+## Series
+
+### Obtener todas las series
+```
+GET /api/series
+```
+**Respuesta**: Array de series sincronizadas desde TMDB
+
+### Obtener serie por ID
+```
+GET /api/series/<id>
+```
+
+### Crear serie (Solo Admin)
+```
+POST /api/series
+Authorization: Bearer token
+```
+**Respuesta esperada**: `403 Forbidden` porque la creación manual está deshabilitada.
+
+### Editar serie (Solo Admin)
+```
+PUT /api/series/<id>
+Authorization: Bearer token
+```
+**Respuesta esperada**: `403 Forbidden` porque la edición manual está deshabilitada.
+
+### Eliminar serie (Solo Admin)
+```
+DELETE /api/series/<id>
+Authorization: Bearer token
+```
+
+### Sincronizar series (Solo Admin)
+```
+POST /api/sync/series
 Authorization: Bearer token
 ```
 
@@ -84,6 +135,31 @@ Body:
 ### Quitar de favoritos
 ```
 DELETE /api/favoritos/<movie_id>
+Authorization: Bearer token
+```
+
+### Favoritos de series
+
+#### Obtener mis series favoritas
+```
+GET /api/series-favoritos
+Authorization: Bearer token
+```
+
+#### Agregar serie a favoritos
+```
+POST /api/series-favoritos
+Authorization: Bearer token
+
+Body:
+{
+  "series_id": number
+}
+```
+
+#### Quitar serie de favoritos
+```
+DELETE /api/series-favoritos/<series_id>
 Authorization: Bearer token
 ```
 
@@ -164,6 +240,39 @@ DELETE /api/reviews/<review_id>
 Authorization: Bearer token
 ```
 **Nota**: Solo puede eliminar sus propias críticas
+
+---
+
+## Reviews de Series
+
+### Obtener críticas de una serie
+```
+GET /api/series/<series_id>/reviews
+```
+
+### Obtener rating promedio de una serie
+```
+GET /api/series/<series_id>/average-rating
+```
+
+### Crear crítica de serie
+```
+POST /api/series/reviews
+Authorization: Bearer token
+
+Body:
+{
+  "series_id": number,
+  "rating": 1-10,
+  "review_text": "string"
+}
+```
+
+### Eliminar crítica de serie
+```
+DELETE /api/series/reviews/<review_id>
+Authorization: Bearer token
+```
 
 ---
 

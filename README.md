@@ -27,7 +27,7 @@ Plataforma de streaming de películas y series con arquitectura de tres capas (F
 
 ### 2. Funcionalidades Requeridas
 - ✅ **Sistema de Registro:** Flujo completo de registro de usuarios
-- ✅ **Módulo de Administración (CRUD):** Panel para administradores con operaciones sobre películas
+- ✅ **Módulo de Administración (CRUD):** Panel para administradores con operaciones sobre películas y series
 
 ---
 
@@ -46,7 +46,8 @@ Plataforma de streaming de películas y series con arquitectura de tres capas (F
 ┌─────────────────────────────────────┐
 │   BACKEND (Flask + SQLAlchemy)       │
 │  ├─ app.py                           │
-│  ├─ Modelos (User, Movie, Favorite)  │
+│  ├─ Modelos (User, Movie, Series,    │
+│  │   Episode, Reviews, SyncState)     │
 │  ├─ Endpoints REST                   │
 │  └─ Autenticación JWT                │
 └─────────────────────────────────────┘
@@ -55,6 +56,8 @@ Plataforma de streaming de películas y series con arquitectura de tres capas (F
 │   BASE DE DATOS (SQLite)             │
 │  ├─ user                             │
 │  ├─ movie                            │
+│  ├─ series                           │
+│  ├─ episode                          │
 │  └─ favorites                        │
 └─────────────────────────────────────┘
 ```
@@ -97,13 +100,23 @@ Si deseas usar MySQL, cambia esta línea por la URI de tu servidor.
 python app.py
 ```
 
-Al iniciar, `app.py` creará `streamflix.db` y, si no hay datos, ejecutará `seed.sql` automáticamente para poblar los usuarios y las películas de ejemplo.
+Al iniciar, `app.py` crea `streamflix.db`, prepara usuarios base si la BD está vacía, limpia el contenido local que no proviene de TMDB y sincroniza automáticamente el catálogo de películas y series desde la API externa.
 
-Además, el backend sincroniza películas desde una API externa de forma incremental (upsert) según un intervalo configurable, manteniendo la arquitectura SPA + API REST.
+El archivo `seed.sql` sigue en el proyecto como referencia histórica y para pruebas locales, pero ya no se usa para poblar el catálogo visible en el arranque normal.
+
+Además, el backend sincroniza películas y series desde TMDB de forma incremental (upsert) según un intervalo configurable, manteniendo la arquitectura SPA + API REST.
 
 La aplicación estará disponible en: **http://localhost:5000**
 
 > No es necesario servir el frontend por separado. Flask ya entrega `index.html` y `app.js`.
+
+### Verificación rápida completa
+```bash
+python smoke_test_streamflix.py
+
+# Para incluir borrado/restauración controlada:
+python smoke_test_streamflix.py --destructive
+```
 
 ---
 
@@ -116,21 +129,37 @@ La aplicación estará disponible en: **http://localhost:5000**
 | **POST** | `/api/registro` | Registrar usuario | `{email, username, password}` |
 | **POST** | `/api/login` | Iniciar sesión | `{email, password}` |
 
-### Películas (CRUD)
+### Películas
 
 | Método | Ruta | Descripción | Autenticación | Body |
 |--------|------|-------------|---|------|
-| **GET** | `/api/peliculas` | Listar todas | ❌ | - |
+| **GET** | `/api/peliculas` | Listar sincronizadas | ❌ | - |
 | **GET** | `/api/peliculas/<id>` | Obtener por ID | ❌ | - |
-| **POST** | `/api/peliculas` | Crear película | ✅ Admin | `{title, description, director, ...}` |
-| **PUT** | `/api/peliculas/<id>` | Actualizar película | ✅ Admin | `{title, description, ...}` |
-| **DELETE** | `/api/peliculas/<id>` | Eliminar película | ✅ Admin | - |
+| **POST** | `/api/peliculas` | Crear manual deshabilitado | ✅ Admin | Devuelve `403` |
+| **PUT** | `/api/peliculas/<id>` | Editar manual deshabilitado | ✅ Admin | Devuelve `403` |
+| **DELETE** | `/api/peliculas/<id>` | Eliminar sincronizada | ✅ Admin | - |
 
 ### Sincronización de Catálogo (API externa)
 
 | Método | Ruta | Descripción | Autenticación |
 |--------|------|-------------|---|
 | **POST** | `/api/sync/peliculas` | Forzar sincronización externa | ✅ Admin |
+
+### Series
+
+| Método | Ruta | Descripción | Autenticación | Body |
+|--------|------|-------------|---|------|
+| **GET** | `/api/series` | Listar sincronizadas | ❌ | - |
+| **GET** | `/api/series/<id>` | Obtener por ID | ❌ | - |
+| **POST** | `/api/series` | Crear manual deshabilitado | ✅ Admin | Devuelve `403` |
+| **PUT** | `/api/series/<id>` | Editar manual deshabilitado | ✅ Admin | Devuelve `403` |
+| **DELETE** | `/api/series/<id>` | Eliminar sincronizada | ✅ Admin | - |
+
+### Sincronización de Series
+
+| Método | Ruta | Descripción | Autenticación |
+|--------|------|-------------|---|
+| **POST** | `/api/sync/series` | Forzar sincronización de series | ✅ Admin |
 
 ### Favoritos
 
@@ -139,6 +168,27 @@ La aplicación estará disponible en: **http://localhost:5000**
 | **POST** | `/api/favoritos` | Agregar a favoritos | ✅ User |
 | **GET** | `/api/favoritos` | Listar mis favoritos | ✅ User |
 | **DELETE** | `/api/favoritos/<id>` | Eliminar de favoritos | ✅ User |
+
+### Favoritos de Series
+
+| Método | Ruta | Descripción | Autenticación |
+|--------|------|-------------|---|
+| **POST** | `/api/series-favoritos` | Agregar serie a favoritos | ✅ User |
+| **GET** | `/api/series-favoritos` | Listar mis series favoritas | ✅ User |
+| **DELETE** | `/api/series-favoritos/<id>` | Eliminar serie de favoritos | ✅ User |
+
+### Reviews
+
+| Método | Ruta | Descripción | Autenticación |
+|--------|------|-------------|---|
+| **GET** | `/api/peliculas/<id>/reviews` | Reviews de película | ❌ |
+| **GET** | `/api/peliculas/<id>/average-rating` | Rating promedio de película | ❌ |
+| **POST** | `/api/reviews` | Crear review de película | ✅ User |
+| **DELETE** | `/api/reviews/<id>` | Eliminar review propia de película | ✅ User |
+| **GET** | `/api/series/<id>/reviews` | Reviews de serie | ❌ |
+| **GET** | `/api/series/<id>/average-rating` | Rating promedio de serie | ❌ |
+| **POST** | `/api/series/reviews` | Crear review de serie | ✅ User |
+| **DELETE** | `/api/series/reviews/<id>` | Eliminar review propia de serie | ✅ User |
 
 ---
 
@@ -149,6 +199,9 @@ streamflix/
 ├── app.py                 # Backend Flask (modelos, endpoints, BD)
 ├── app.js                 # Frontend SPA (Vanilla JS)
 ├── index.html             # HTML principal (estructura y estilos)
+├── seed.sql               # Seed legado / referencia histórica
+├── seed_data.sql          # Datos de prueba históricos
+├── smoke_test_streamflix.py # Smoke test funcional
 ├── schema.sql             # Script de creación de BD
 ├── requirements.txt       # Dependencias de Python
 ├── models.py              # Modelos de datos (opcional)
@@ -186,8 +239,46 @@ CREATE TABLE movie (
     rating REAL,
     poster_url VARCHAR(500),
     video_url VARCHAR(500),
+    external_id VARCHAR(120),
+    source VARCHAR(50) DEFAULT 'local',
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+```
+
+### Tabla: `series`
+```sql
+CREATE TABLE series (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    title VARCHAR(255) NOT NULL,
+    description TEXT,
+    director VARCHAR(255),
+    genre VARCHAR(100),
+    release_date DATE,
+    poster_url VARCHAR(500),
+    external_id VARCHAR(120),
+    source VARCHAR(50) DEFAULT 'local',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+```
+
+### Tabla: `episode`
+```sql
+CREATE TABLE episode (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    series_id INTEGER NOT NULL,
+    title VARCHAR(255) NOT NULL,
+    description TEXT,
+    season INTEGER NOT NULL,
+    episode_number INTEGER NOT NULL,
+    air_date DATE,
+    duration_minutes INTEGER,
+    video_url VARCHAR(500),
+    external_id VARCHAR(120),
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (series_id) REFERENCES series(id) ON DELETE CASCADE
 );
 ```
 
@@ -199,6 +290,18 @@ CREATE TABLE favorites (
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (movie_id, user_id),
     FOREIGN KEY (movie_id) REFERENCES movie(id) ON DELETE CASCADE,
+    FOREIGN KEY (user_id) REFERENCES user(id) ON DELETE CASCADE
+);
+```
+
+### Tabla: `series_favorites`
+```sql
+CREATE TABLE series_favorites (
+    series_id INTEGER NOT NULL,
+    user_id INTEGER NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (series_id, user_id),
+    FOREIGN KEY (series_id) REFERENCES series(id) ON DELETE CASCADE,
     FOREIGN KEY (user_id) REFERENCES user(id) ON DELETE CASCADE
 );
 ```
@@ -219,25 +322,27 @@ CREATE TABLE favorites (
 3. Se redirigirá al catálogo de películas
 
 ### 3. Ver Catálogo de Películas
-1. Una vez autenticado, verá todas las películas
-2. Puede buscar por título en tiempo real
-3. Puede agregar películas a favoritos
+1. Una vez autenticado, verá el catálogo sincronizado desde TMDB
+2. Puede alternar entre Películas y Series con las pestañas superiores
+3. Puede buscar por título en tiempo real
+4. Puede agregar películas y series a favoritos
 
 ### 4. Gestionar Favoritos
 1. Hacer clic en "❤️ Mis Favoritos"
 2. Ver películas marcadas como favoritas
-3. Agregar o remover películas
+3. Cambiar a series favoritas desde su sección correspondiente
+4. Agregar o remover elementos
 
 ### 5. Panel de Administración (solo admins)
 1. Ir a "⚙️ Administración"
-2. Gestionar películas, actualizar, eliminar
-3. Crear nuevas películas con datos completos
+2. Alternar entre "Gestionar Películas" y "Gestionar Series"
+3. Sincronizar catálogo desde TMDB o eliminar elementos sincronizados
 
 ---
 
 ## 👥 USUARIOS DE PRUEBA
 
-El proyecto incluye usuarios iniciales en `seed.sql`:
+El proyecto incluye usuarios base creados automáticamente al arrancar si la BD está vacía:
 
 - **Administrador**
   - Username: `admin`
@@ -246,14 +351,14 @@ El proyecto incluye usuarios iniciales en `seed.sql`:
   - Rol: `admin`
   - Puede crear, editar y eliminar películas.
 
-- **Usuario normal**
+**Usuario normal**
   - Username: `demo`
   - Email: `demo@example.com`
   - Contraseña: `demo123`
   - Rol: `user`
-  - Puede ver películas, iniciar sesión y gestionar favoritos.
+  - Puede ver el catálogo, iniciar sesión y gestionar favoritos.
 
-> Si el archivo `seed.sql` no está disponible, `app.py` crea un usuario `demo` con rol `admin` como backup.
+> `seed.sql` sigue disponible como referencia de datos históricos y pruebas, pero ya no se usa para poblar el catálogo visible en el arranque normal.
 
 ---
 
@@ -289,6 +394,18 @@ Si `TMDB_API_KEY` no está configurada o TMDB no responde, el backend aplica fal
 
 Consulta `.env.example` para ver un ejemplo completo de configuración.
 
+## 🔄 SINCRONIZACIÓN AUTOMÁTICA DE SERIES
+
+Las series siguen el mismo patrón de TMDB, con sus propias variables de entorno:
+
+- `SERIES_PROVIDER_SOURCE` (default: `tmdb`)
+- `SERIES_PROVIDER_TIMEOUT_SECONDS` (default: `8`)
+- `SERIES_SYNC_INTERVAL_MINUTES` (default: `120`)
+- `SERIES_SYNC_MAX_PAGES` (default: `2`)
+- `SERIES_AUTO_SYNC_ON_READ` (default: `true`)
+
+La sincronización manual se expone en `POST /api/sync/series` y también se ejecuta al iniciar la aplicación.
+
 ---
 
 ## 🛠️ STACK TECNOLÓGICO
@@ -322,7 +439,7 @@ Consulta `.env.example` para ver un ejemplo completo de configuración.
 ✅ **Tokens JWT** con expiración de 24 horas
 ✅ **Validación de inputs** en servidor y cliente
 ✅ **CORS configurado** para evitar accesos no autorizados
-✅ **Roles y permisos** (solo admins pueden gestionar películas)
+✅ **Roles y permisos** (solo admins pueden gestionar el catálogo)
 ✅ **Relaciones de BD** con Foreign Keys
 
 ---
@@ -333,9 +450,11 @@ Consulta `.env.example` para ver un ejemplo completo de configuración.
 - [x] Endpoints REST completos (CRUD)
 - [x] Frontend SPA funcional
 - [x] Sistema de registro e inicio de sesión
-- [x] Gestión de favoritos
-- [x] Panel administrativo
+- [x] Gestión de favoritos de películas y series
+- [x] Panel administrativo con pestañas y sincronización TMDB
 - [x] Seguridad (Bcrypt, JWT)
+- [x] Sincronización TMDB (películas y series)
+- [x] Smoke test funcional automatizado
 - [x] Documentación completa
 
 ---
@@ -368,5 +487,5 @@ Para reportar issues o sugerencias, contactar al equipo de desarrollo.
 
 ---
 
-**Última actualización:** 4 de Abril, 2026
+**Última actualización:** 2 de Mayo, 2026
 

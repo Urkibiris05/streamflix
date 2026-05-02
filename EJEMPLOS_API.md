@@ -123,13 +123,13 @@ Puedes usar estas cuentas iniciales para  probar la aplicación rápidamente:
   - Email: `admin@example.com`
   - Password: `demo123`
   - Role: `admin`
-  - Puede crear, editar y eliminar películas
+  - Puede sincronizar y eliminar contenido
 
 - **Usuario normal**
   - Email: `demo@example.com`
   - Password: `demo123`
   - Role: `user`
-  - Puede ver películas y gestionar favoritos
+  - Puede ver películas y series, y gestionar favoritos
 
 ---
 
@@ -209,11 +209,11 @@ fetch(`http://localhost:5000/api/peliculas/${movieId}`)
 
 ---
 
-### 5. CREAR UNA NUEVA PELÍCULA (POST) - ⚠️ SOLO ADMIN
+### 5. CREAR UNA NUEVA PELÍCULA (POST) - ⚠️ DESHABILITADO
 
 **Endpoint:** `POST /api/peliculas`
 
-**Requiere:** Token JWT con rol admin
+**Requiere:** Token JWT con rol admin, pero la API responde `403` porque la creación manual está deshabilitada.
 
 #### cURL con Token
 ```bash
@@ -260,36 +260,20 @@ fetch('http://localhost:5000/api/peliculas', {
 .catch(error => console.error('Error:', error));
 ```
 
-#### Respuesta Exitosa (201)
+#### Respuesta esperada (403)
 ```json
 {
-  "mensaje": "Película creada exitosamente",
-  "pelicula": {
-    "id": 2,
-    "title": "The Matrix",
-    "description": "A hacker learns about the true nature of his reality...",
-    "director": "Lana Wachowski, Lilly Wachowski",
-    "genre": "Sci-Fi",
-    "release_date": "1999-03-31",
-    "duration_minutes": 136,
-    "rating": 8.7,
-    "poster_url": "https://example.com/matrix.jpg"
-  }
-}
-```
-
-#### Respuesta de Error (403 - No es admin)
-```json
-{
-  "error": "Acceso denegado. Solo administradores"
+  "error": "La creación manual de películas está deshabilitada. Solo se aceptan películas sincronizadas desde TMDB."
 }
 ```
 
 ---
 
-### 6. ACTUALIZAR UNA PELÍCULA (PUT) - ⚠️ SOLO ADMIN
+### 6. ACTUALIZAR UNA PELÍCULA (PUT) - ⚠️ DESHABILITADO
 
 **Endpoint:** `PUT /api/peliculas/<id>`
+
+La edición manual también responde `403`; los cambios llegan por sincronización TMDB.
 
 #### cURL con Token
 ```bash
@@ -324,16 +308,10 @@ fetch(`http://localhost:5000/api/peliculas/${movieId}`, {
 .catch(error => console.error('Error:', error));
 ```
 
-#### Respuesta Exitosa (200)
+#### Respuesta esperada (403)
 ```json
 {
-  "mensaje": "Película actualizada exitosamente",
-  "pelicula": {
-    "id": 1,
-    "title": "Inception (Actualizado)",
-    "rating": 9.0,
-    ...
-  }
+  "error": "La edición manual de películas está deshabilitada. Solo se persisten datos sincronizados desde TMDB."
 }
 ```
 
@@ -370,6 +348,58 @@ fetch(`http://localhost:5000/api/peliculas/${movieId}`, {
 {
   "mensaje": "Película eliminada exitosamente"
 }
+```
+
+---
+
+## 📺 SERIES
+
+### 8. OBTENER TODAS LAS SERIES (GET)
+
+**Endpoint:** `GET /api/series`
+
+```bash
+curl http://localhost:5000/api/series
+```
+
+### 9. OBTENER UNA SERIE POR ID
+
+**Endpoint:** `GET /api/series/<id>`
+
+```bash
+curl http://localhost:5000/api/series/1
+```
+
+### 10. SINCRONIZAR SERIES (POST) - ⚠️ SOLO ADMIN
+
+**Endpoint:** `POST /api/sync/series`
+
+```bash
+curl -X POST http://localhost:5000/api/sync/series \
+  -H "Authorization: Bearer tu_token_jwt_aqui"
+```
+
+### 11. BORRAR UNA SERIE (DELETE) - ⚠️ SOLO ADMIN
+
+**Endpoint:** `DELETE /api/series/<id>`
+
+```bash
+curl -X DELETE http://localhost:5000/api/series/1 \
+  -H "Authorization: Bearer tu_token_jwt_aqui"
+```
+
+### 12. FAVORITOS DE SERIES
+
+```bash
+curl http://localhost:5000/api/series-favoritos \
+  -H "Authorization: Bearer tu_token_jwt_aqui"
+```
+
+### 13. REVIEWS DE SERIES
+
+```bash
+curl http://localhost:5000/api/series/1/reviews
+curl http://localhost:5000/api/series/1/average-rating
 ```
 
 ---
