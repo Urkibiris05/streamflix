@@ -69,6 +69,13 @@ MOVIES_SYNC_MAX_PAGES = int(os.getenv('MOVIES_SYNC_MAX_PAGES', '2'))
 MOVIES_SYNC_PAGE_LIMIT = int(os.getenv('MOVIES_SYNC_PAGE_LIMIT', '50'))
 MOVIES_AUTO_SYNC_ON_READ = os.getenv('MOVIES_AUTO_SYNC_ON_READ', 'true').lower() == 'true'
 
+# Series sync config
+SERIES_PROVIDER_SOURCE = os.getenv('SERIES_PROVIDER_SOURCE', 'tmdb')
+SERIES_PROVIDER_TIMEOUT_SECONDS = int(os.getenv('SERIES_PROVIDER_TIMEOUT_SECONDS', '8'))
+SERIES_SYNC_INTERVAL_MINUTES = int(os.getenv('SERIES_SYNC_INTERVAL_MINUTES', '120'))
+SERIES_SYNC_MAX_PAGES = int(os.getenv('SERIES_SYNC_MAX_PAGES', '2'))
+SERIES_AUTO_SYNC_ON_READ = os.getenv('SERIES_AUTO_SYNC_ON_READ', 'true').lower() == 'true'
+
 TITLE_ALIASES = {
     'spirited away': 'spirited away',
     'el viaje de chihiro': 'spirited away',
@@ -133,6 +140,8 @@ class Series(db.Model):
     genre = db.Column(db.String(100))
     release_date = db.Column(db.Date)
     poster_url = db.Column(db.String(500))
+    external_id = db.Column(db.String(120), nullable=True)
+    source = db.Column(db.String(50), default='local')
     created_at = db.Column(db.DateTime(timezone=True), default=db.func.current_timestamp())
     updated_at = db.Column(db.DateTime(timezone=True), default=db.func.current_timestamp(), onupdate=db.func.current_timestamp())
 
@@ -150,6 +159,7 @@ class Episode(db.Model):
     air_date = db.Column(db.Date)
     duration_minutes = db.Column(db.Integer)
     video_url = db.Column(db.String(500))
+    external_id = db.Column(db.String(120), nullable=True)
     created_at = db.Column(db.DateTime(timezone=True), default=db.func.current_timestamp())
     updated_at = db.Column(db.DateTime(timezone=True), default=db.func.current_timestamp(), onupdate=db.func.current_timestamp())
 
@@ -301,10 +311,37 @@ def purge_non_tmdb_movies():
         return 0
 
     movie_ids = [movie.id for movie in movies_to_delete]
+    Review.query.filter(Review.movie_id.in_(movie_ids)).delete(synchronize_session=False)
     Favorites.query.filter(Favorites.movie_id.in_(movie_ids)).delete(synchronize_session=False)
     Movie.query.filter(Movie.id.in_(movie_ids)).delete(synchronize_session=False)
     db.session.commit()
     return len(movie_ids)
+
+
+def purge_non_tmdb_series():
+    """Eliminar series locales y todo su contenido asociado que no provenga de TMDB."""
+    series_to_delete = Series.query.filter(
+        or_(
+            Series.source != 'tmdb',
+            Series.source.is_(None),
+            Series.source == '',
+        )
+    ).all()
+    if not series_to_delete:
+        return 0
+
+    series_ids = [serie.id for serie in series_to_delete]
+    episode_ids = [episode.id for episode in Episode.query.filter(Episode.series_id.in_(series_ids)).all()]
+
+    if episode_ids:
+        EpisodeReview.query.filter(EpisodeReview.episode_id.in_(episode_ids)).delete(synchronize_session=False)
+
+    SeriesReview.query.filter(SeriesReview.series_id.in_(series_ids)).delete(synchronize_session=False)
+    SeriesFavorites.query.filter(SeriesFavorites.series_id.in_(series_ids)).delete(synchronize_session=False)
+    Episode.query.filter(Episode.series_id.in_(series_ids)).delete(synchronize_session=False)
+    Series.query.filter(Series.id.in_(series_ids)).delete(synchronize_session=False)
+    db.session.commit()
+    return len(series_ids)
 
 
 def _bootstrap_default_users():
@@ -670,6 +707,174 @@ def _map_provider_movie(raw_movie, provider_source=None):
     }
 
 
+def _fetch_tmdb_series():
+    """Obtiene series de TMDB API"""
+    if not TMDB_API_KEY:
+        raise ValueError('TMDB_API_KEY no configurada')
+
+    genre_response = requests.get(
+        f"{TMDB_BASE_URL}/genre/tv/list",
+        params={
+            'api_key': TMDB_API_KEY,
+            'language': TMDB_LANGUAGE,
+        },
+        timeout=SERIES_PROVIDER_TIMEOUT_SECONDS,
+    )
+    genre_response.raise_for_status()
+    genre_payload = genre_response.json()
+    genre_map = {g['id']: g['name'] for g in genre_payload.get('genres', [])}
+
+    collected = []
+    seen_ids = set()
+    endpoints = ['on_the_air', 'popular']
+
+    for endpoint in endpoints:
+        for page in range(1, SERIES_SYNC_MAX_PAGES + 1):
+            response = requests.get(
+                f"{TMDB_BASE_URL}/tv/{endpoint}",
+                params={
+                    'api_key': TMDB_API_KEY,
+                    'language': TMDB_LANGUAGE,
+                    'page': page,
+                },
+                timeout=SERIES_PROVIDER_TIMEOUT_SECONDS,
+            )
+            response.raise_for_status()
+            payload = response.json()
+
+            for series in payload.get('results', []):
+                series_id = series.get('id')
+                if series_id in seen_ids:
+                    continue
+
+                seen_ids.add(series_id)
+                series['genre_names'] = [genre_map.get(gid) for gid in series.get('genre_ids', []) if genre_map.get(gid)]
+                collected.append(series)
+
+    return collected
+
+
+def _map_provider_series(raw_series, provider_source=None):
+    """Mapea datos de serie desde proveedor a formato interno"""
+    source = provider_source or SERIES_PROVIDER_SOURCE
+
+    if source == 'tmdb':
+        title = raw_series.get('name') or raw_series.get('title')
+        if not title:
+            return None
+
+        genre_names = raw_series.get('genre_names', [])
+        poster_path = raw_series.get('poster_path')
+
+        return {
+            'external_id': str(raw_series.get('id')) if raw_series.get('id') is not None else None,
+            'source': source,
+            'title': title,
+            'description': raw_series.get('overview') or None,
+            'director': None,
+            'genre': ', '.join(genre_names) if genre_names else None,
+            'release_date': _parse_tmdb_release_date(raw_series.get('first_air_date')),
+            'poster_url': f"{TMDB_IMAGE_BASE_URL}{poster_path}" if poster_path else None,
+        }
+
+    return None
+
+
+def _should_sync_series(force=False):
+    """Verifica si debe sincronizarse series basado en intervalo configurado"""
+    if force:
+        return True
+
+    if not SERIES_AUTO_SYNC_ON_READ:
+        return False
+
+    last_sync = _get_sync_state('series_last_sync')
+    if not last_sync:
+        return True
+
+    try:
+        last_sync_dt = datetime.fromisoformat(last_sync)
+        time_elapsed = _now_utc() - last_sync_dt
+        threshold = __import__('datetime').timedelta(minutes=SERIES_SYNC_INTERVAL_MINUTES)
+        return time_elapsed >= threshold
+    except (ValueError, TypeError):
+        return True
+
+
+def sync_series_from_api(force=False):
+    """Sincroniza series desde TMDB hacia BD local con inserción/actualización incremental"""
+    if not _should_sync_series(force=force):
+        return {'skipped': True, 'reason': 'sync_interval_not_reached'}
+
+    created = 0
+    updated = 0
+    processed = 0
+
+    try:
+        source_in_use = 'tmdb'
+        provider_series = _fetch_tmdb_series()
+
+        for raw_series in provider_series:
+            mapped = _map_provider_series(raw_series, provider_source=source_in_use)
+            if not mapped:
+                continue
+
+            processed += 1
+            mapped['source'] = source_in_use
+
+            # Buscar serie existente por external_id y source
+            existing_series = Series.query.filter_by(
+                external_id=mapped['external_id'],
+                source=mapped['source']
+            ).first()
+
+            if existing_series:
+                existing_series.title = mapped['title']
+                existing_series.description = mapped['description']
+                existing_series.director = mapped['director']
+                existing_series.genre = mapped['genre']
+                existing_series.release_date = mapped['release_date']
+                existing_series.poster_url = mapped['poster_url']
+                existing_series.updated_at = _now_utc()
+                updated += 1
+            else:
+                db.session.add(Series(
+                    title=mapped['title'],
+                    description=mapped['description'],
+                    director=mapped['director'],
+                    genre=mapped['genre'],
+                    release_date=mapped['release_date'],
+                    poster_url=mapped['poster_url'],
+                    external_id=mapped['external_id'],
+                    source=mapped['source'],
+                    created_at=_now_utc(),
+                    updated_at=_now_utc(),
+                ))
+                created += 1
+
+        _set_sync_state('series_last_sync', _now_utc().isoformat())
+        db.session.commit()
+
+        total_series = Series.query.count()
+        tmdb_series = Series.query.filter_by(source='tmdb').count()
+
+        return {
+            'ok': True,
+            'processed': processed,
+            'created': created,
+            'updated': updated,
+            'total_series': total_series,
+            'tmdb_series': tmdb_series,
+            'source': source_in_use,
+        }
+    except Exception as e:
+        db.session.rollback()
+        return {
+            'ok': False,
+            'error': str(e),
+        }
+
+
 def sync_movies_from_api(force=False):
     """Sincroniza películas desde API externa hacia la BD local con inserción/actualización incremental."""
     if not _should_sync_movies(force=force):
@@ -860,28 +1065,33 @@ def init_db():
         db.create_all()
         ensure_schema_compatibility()
 
+        _bootstrap_default_users()
+
         removed = purge_non_tmdb_movies()
         if removed > 0:
             print(f"Películas no-TMDB eliminadas de la BD: {removed}")
 
-        # Cargar datos del seed.sql si no hay usuarios o películas
-        if User.query.count() == 0 or Movie.query.count() == 0:
-            print("Cargando datos iniciales desde seed.sql...")
-            _load_seed_data()
-        
-        # También cargar series y episodios del seed si no hay
-        if Series.query.count() == 0 or Episode.query.count() == 0:
-            print("Cargando series desde seed.sql...")
-            _load_seed_data()
+        removed_series = purge_non_tmdb_series()
+        if removed_series > 0:
+            print(f"Series no-TMDB eliminadas de la BD: {removed_series}")
 
         # Sincronización incremental desde API externa (si falla, la app continúa con datos locales)
         sync_result = sync_movies_from_api(force=False)
         if sync_result.get('ok'):
-            print(f"Sincronización API OK. Creadas: {sync_result.get('created', 0)} | Actualizadas: {sync_result.get('updated', 0)}")
+            print(f"Sincronización Películas OK. Creadas: {sync_result.get('created', 0)} | Actualizadas: {sync_result.get('updated', 0)}")
         elif sync_result.get('skipped'):
-            print("Sincronización API omitida por intervalo configurado")
+            print("Sincronización Películas omitida por intervalo configurado")
         else:
-            print(f"Sincronización API falló: {sync_result.get('error')}")
+            print(f"Sincronización Películas falló: {sync_result.get('error')}")
+
+        # Sincronización de series desde TMDB
+        sync_series_result = sync_series_from_api(force=False)
+        if sync_series_result.get('ok'):
+            print(f"Sincronización Series OK. Creadas: {sync_series_result.get('created', 0)} | Actualizadas: {sync_series_result.get('updated', 0)}")
+        elif sync_series_result.get('skipped'):
+            print("Sincronización Series omitida por intervalo configurado")
+        else:
+            print(f"Sincronización Series falló: {sync_series_result.get('error')}")
 
         merged = deduplicate_movies_by_aliases()
         if merged > 0:
@@ -1040,7 +1250,7 @@ def obtener_peliculas():
         if MOVIES_AUTO_SYNC_ON_READ:
             sync_movies_from_api(force=False)
 
-        peliculas = Movie.query.all()
+        peliculas = Movie.query.filter_by(source='tmdb').all()
         return jsonify([{
             'id': p.id,
             'title': p.title,
@@ -1064,7 +1274,7 @@ def obtener_peliculas():
 def obtener_pelicula(id):
     try:
         pelicula = db.session.get(Movie, id)
-        if not pelicula:
+        if not pelicula or pelicula.source != 'tmdb':
             return jsonify({'error': 'Película no encontrada'}), 404
         return jsonify({
             'id': pelicula.id,
@@ -1140,6 +1350,77 @@ def eliminar_pelicula(id):
         return jsonify({'error': str(e)}), 500
 
 
+# --- API: CRUD SERIES (Solo lectura + sincronización desde API) ---
+@app.route('/api/series', methods=['POST'])
+@cors_enabled
+def crear_serie():
+    try:
+        return jsonify({'error': 'La creación manual de series está deshabilitada. Solo se aceptan series sincronizadas desde TMDB.'}), 403
+
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/series/<int:id>', methods=['PUT'])
+@cors_enabled
+def editar_serie(id):
+    try:
+        return jsonify({'error': 'La edición manual de series está deshabilitada. Solo se persisten datos sincronizados desde TMDB.'}), 403
+
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/series/<int:id>', methods=['DELETE'])
+@cors_enabled
+def eliminar_serie(id):
+    try:
+        # Obtener user_id del token y verificar rol admin
+        auth_header = request.headers.get('Authorization')
+        if not auth_header or not auth_header.startswith('Bearer '):
+            return jsonify({'error': 'Token requerido'}), 401
+        
+        token = auth_header.split(' ')[1]
+        try:
+            user_id = int(token.split('_')[1])
+        except:
+            return jsonify({'error': 'Token inválido'}), 401
+
+        usuario = db.session.get(User, user_id)
+        if not usuario or usuario.role != 'admin':
+            return jsonify({'error': 'Acceso denegado. Solo administradores pueden eliminar series.'}), 403
+
+        serie = db.session.get(Series, id)
+        if not serie:
+            return jsonify({'error': 'Serie no encontrada'}), 404
+        
+        # Eliminar favoritos de series asociados
+        SeriesFavorites.query.filter_by(series_id=id).delete()
+        
+        # Eliminar reviews de series
+        SeriesReview.query.filter_by(series_id=id).delete()
+        
+        # Eliminar reviews de episodios
+        episodes = Episode.query.filter_by(series_id=id).all()
+        for ep in episodes:
+            EpisodeReview.query.filter_by(episode_id=ep.id).delete()
+        
+        # Eliminar episodios (cascade también lo haría, pero explícito es mejor)
+        Episode.query.filter_by(series_id=id).delete()
+        
+        # Eliminar la serie
+        db.session.delete(serie)
+        db.session.commit()
+
+        return jsonify({'mensaje': 'Serie eliminada exitosamente'}), 200
+
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
+
 @app.route('/api/sync/peliculas', methods=['POST'])
 @cors_enabled
 def sincronizar_peliculas_api():
@@ -1174,6 +1455,40 @@ def sincronizar_peliculas_api():
         return jsonify({'error': str(e)}), 500
 
 
+@app.route('/api/sync/series', methods=['POST'])
+@cors_enabled
+def sincronizar_series_api():
+    try:
+        # Obtener user_id del token y verificar rol admin
+        auth_header = request.headers.get('Authorization')
+        if not auth_header or not auth_header.startswith('Bearer '):
+            return jsonify({'error': 'Token requerido'}), 401
+
+        token = auth_header.split(' ')[1]
+        try:
+            user_id = int(token.split('_')[1])
+        except Exception:
+            return jsonify({'error': 'Token inválido'}), 401
+
+        usuario = db.session.get(User, user_id)
+        if not usuario or usuario.role != 'admin':
+            return jsonify({'error': 'Acceso denegado. Solo administradores pueden sincronizar series.'}), 403
+
+        sync_result = sync_series_from_api(force=True)
+        if sync_result.get('ok'):
+            return jsonify({
+                'mensaje': 'Sincronización de series completada',
+                'resultado': sync_result,
+            }), 200
+
+        return jsonify({
+            'error': 'No se pudo completar la sincronización de series',
+            'detalle': sync_result,
+        }), 502
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
 # --- API: SERIES ---
 @app.route('/api/series', methods=['GET'])
 @cors_enabled
@@ -1181,7 +1496,7 @@ def obtener_series():
     try:
         from sqlalchemy import func
 
-        series = Series.query.all()
+        series = Series.query.filter_by(source='tmdb').all()
         series_list = []
         for s in series:
             # Obtener rating promedio de la serie
@@ -1219,7 +1534,7 @@ def obtener_serie(id):
         from sqlalchemy import func
 
         serie = db.session.get(Series, id)
-        if not serie:
+        if not serie or serie.source != 'tmdb':
             return jsonify({'error': 'Serie no encontrada'}), 404
 
         # Obtener rating promedio de la serie

@@ -338,20 +338,25 @@ async function renderAdmin() {
     <div class="container admin-container">
       <h2>⚙️ Panel de Administración</h2>
       <div class="admin-tabs">
-        <button class="tab-btn active" onclick="switchTab('lista')">Gestionar Películas</button>
-        <button class="tab-btn" onclick="switchTab('crear')">Crear Nueva Película</button>
+        <button class="tab-btn active" id="admin-tab-peliculas" onclick="switchTab('peliculas')">Gestionar Películas</button>
+        <button class="tab-btn" id="admin-tab-series" onclick="switchTab('series')">Gestionar Series</button>
       </div>
       <div id="admin-content"></div>
     </div>
   `;
 
-  switchTab('lista');
+  switchTab('peliculas');
 }
 
 async function switchTab(tab) {
   const adminContent = document.getElementById('admin-content');
+  const peliculasTab = document.getElementById('admin-tab-peliculas');
+  const seriesTab = document.getElementById('admin-tab-series');
+
+  if (peliculasTab) peliculasTab.classList.toggle('active', tab === 'peliculas');
+  if (seriesTab) seriesTab.classList.toggle('active', tab === 'series');
   
-  if (tab === 'lista') {
+  if (tab === 'peliculas') {
     adminContent.innerHTML = `
       <div style="display:flex; justify-content:space-between; align-items:center; gap:1rem; flex-wrap:wrap;">
         <h3>Lista de Películas</h3>
@@ -379,23 +384,34 @@ async function switchTab(tab) {
     });
     html += '</tbody></table>';
     document.getElementById('admin-movies-list').innerHTML = html;
-  } else {
+  } else if (tab === 'series') {
     adminContent.innerHTML = `
-      <h3>Crear Nueva Película</h3>
-      <form onsubmit="crearPelicula(event)" class="admin-form">
-        <input type="text" id="title" placeholder="Título" required>
-        <textarea id="description" placeholder="Descripción"></textarea>
-        <input type="text" id="director" placeholder="Director">
-        <input type="text" id="genre" placeholder="Género">
-        <input type="date" id="release_date">
-        <input type="number" id="duration_minutes" placeholder="Duración (minutos)">
-        <input type="number" id="rating" placeholder="Calificación (0-10)" step="0.1">
-        <input type="text" id="poster_url" placeholder="URL del Poster">
-        <input type="text" id="video_url" placeholder="URL del Video (opcional)">
-        <button type="submit" class="btn btn-primary">Crear Película</button>
-      </form>
-      <div id="create-result" class="create-result"></div>
+      <div style="display:flex; justify-content:space-between; align-items:center; gap:1rem; flex-wrap:wrap;">
+        <h3>Lista de Series</h3>
+        <button class="btn btn-primary" onclick="sincronizarSeriesAPI()">Actualizar desde API externa</button>
+      </div>
+      <div id="sync-result-series" style="margin-top:0.75rem; color:#555;"></div>
+      <div id="admin-series-list"></div>
     `;
+    const series = await fetchAPI(`${API_URL}/series`, 'GET');
+    
+    let html = '<table class="admin-table"><thead><tr><th>DB_ID</th><th>TMDB_ID</th><th>Título</th><th>Género</th><th>Episodios</th><th>Acciones</th></tr></thead><tbody>';
+    series.forEach(s => {
+      html += `
+        <tr>
+          <td style="font-size:0.85rem;color:#666;">${s.id}</td>
+          <td style="font-size:0.85rem;color:#666;">${s.external_id || '—'}</td>
+          <td>${s.title}</td>
+          <td>${s.genre || 'N/A'}</td>
+          <td style="text-align:center;">-</td>
+          <td>
+            <button class="btn btn-small btn-danger" onclick="eliminarSerie(${s.id})">Eliminar</button>
+          </td>
+        </tr>
+      `;
+    });
+    html += '</tbody></table>';
+    document.getElementById('admin-series-list').innerHTML = html;
   }
 }
 
@@ -422,7 +438,47 @@ async function sincronizarPeliculasAPI() {
     syncResult.textContent = `Sincronización completada. Procesadas: ${processed}, nuevas: ${created}, actualizadas: ${updated}.${totalText}`;
   }
 
-  await switchTab('lista');
+  await switchTab('peliculas');
+}
+
+async function sincronizarSeriesAPI() {
+  const syncResult = document.getElementById('sync-result-series');
+  if (syncResult) {
+    syncResult.textContent = 'Sincronizando series...';
+  }
+
+  const response = await fetchAPI(`${API_URL}/sync/series`, 'POST', {}, authToken);
+  if (!response) {
+    if (syncResult) {
+      syncResult.textContent = 'No se pudo completar la sincronización de series.';
+    }
+    return;
+  }
+
+  const created = response.resultado?.created ?? 0;
+  const updated = response.resultado?.updated ?? 0;
+  const processed = response.resultado?.processed ?? 0;
+  const totalSeries = response.resultado?.total_series;
+  if (syncResult) {
+    const totalText = Number.isFinite(totalSeries) ? ` Catálogo actual en BD: ${totalSeries}.` : '';
+    syncResult.textContent = `Sincronización completada. Procesadas: ${processed}, nuevas: ${created}, actualizadas: ${updated}.${totalText}`;
+  }
+
+  await switchTab('series');
+}
+
+async function eliminarSerie(id) {
+  if (!confirm('¿Estás seguro de que quieres eliminar esta serie?')) {
+    return;
+  }
+
+  const response = await fetchAPI(`${API_URL}/series/${id}`, 'DELETE', null, authToken);
+  if (response && response.mensaje) {
+    alert(response.mensaje);
+    await switchTab('series');
+  } else {
+    alert('Error al eliminar la serie');
+  }
 }
 
 // ==================== RENDERIZACIÓN: FAVORITOS ====================
