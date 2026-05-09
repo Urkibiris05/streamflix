@@ -207,6 +207,8 @@ fetch(`http://localhost:5000/api/peliculas/${movieId}`)
 }
 ```
 
+> Nota: la aplicación no provee un endpoint específico de búsqueda en el backend. La búsqueda/filtrado se realiza en el frontend (ver `app.js`) sobre los resultados devueltos por `GET /api/peliculas`.
+
 ---
 
 ### 5. CREAR UNA NUEVA PELÍCULA (POST) - ⚠️ DESHABILITADO

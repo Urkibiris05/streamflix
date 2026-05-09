@@ -236,6 +236,8 @@
 └────────────────────────────────────┘
 ```
 
+**Nota:** Se han añadido pruebas automáticas (`pytest`) y smoke tests; además la búsqueda de títulos se implementa en el frontend (filtrado client-side sobre `/api/peliculas`). El backend incluye ahora tolerancia al crear índices únicos para evitar fallos en instalaciones con datos históricos duplicados.
+
 ---
 
 ## 🗑️ FLUJO: ELIMINAR PELÍCULA (DELETE) - ADMIN
