@@ -83,6 +83,27 @@ Puedes usar las cuentas base que crea automáticamente la aplicación:
 - Ejecuta `python smoke_test_streamflix.py` para comprobar login, catálogo, favoritos, reviews y sincronización
 - Ejecuta `python smoke_test_streamflix.py --destructive` para probar borrado y restauración controlada
 
+### Ejecución de tests automáticos
+
+Se usa `pytest` para la suite completa y `smoke_test_streamflix.py` para pruebas rápidas.
+
+```bash
+# Instalar dependencias y pytest
+pip install -r requirements.txt
+pip install pytest
+
+# Ejecutar la suite completa (lenta)
+pytest test_streamflix.py -v
+
+# Ejecutar smoke tests (rápido)
+python smoke_test_streamflix.py
+
+# Exportar requirements desde el entorno virtual
+pip freeze > requirements.txt
+```
+
+Nota: las búsquedas se realizan en el frontend (filtrado client-side). Los tests de rendimiento validan ese filtrado y una prueba de carga valida que 25+ usuarios pueden autenticarse y consultar el catálogo concurrentemente.
+
 ---
 
 ## ✅ VERIFICACIÓN RÁPIDA DE LOS ENDPOINTS

@@ -13,9 +13,11 @@ from __future__ import annotations
 
 import argparse
 import sys
+import time
 import uuid
 from dataclasses import dataclass, field
 from typing import Any, Callable
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import requests
 
@@ -241,6 +243,99 @@ def check_sync(ctx: SmokeContext) -> None:
     assert_true(isinstance(payload, dict) and 'resultado' in payload, 'Sync de series no devolvio resultado')
 
 
+def check_movie_search_performance(ctx: SmokeContext) -> None:
+    """Mide el rendimiento al obtener y filtrar películas."""
+    search_terms = ['the', 'and', 'a', 'to', 'of']
+    search_times = []
+    
+    for term in search_terms:
+        start_time = time.time()
+        _, movies = request_json(ctx, 'GET', '/api/peliculas', expected={200})
+        elapsed_time = time.time() - start_time
+        search_times.append(elapsed_time)
+        
+        assert_true(isinstance(movies, list), f'GET /api/peliculas no devolvio lista')
+        # Simular filtrado en cliente
+        filtered = [m for m in movies if term.lower() in str(m.get('title', '')).lower()]
+        assert_true(elapsed_time < 10, f'GET /api/peliculas tardo {elapsed_time:.2f}s (limite: 10s)')
+    
+    avg_time = sum(search_times) / len(search_times)
+    print(f'   Tiempo promedio de respuesta de catálogo: {avg_time:.2f}s (individual: {[f"{t:.2f}s" for t in search_times]})')
+
+
+def check_concurrent_users_load(ctx: SmokeContext) -> None:
+    """Prueba carga de 25+ usuarios conectados simultáneamente."""
+    num_users = 30
+    user_tokens = []
+    failed_logins = 0
+    login_times = []
+    
+    def create_and_login_user(user_index: int) -> tuple[bool, float]:
+        """Crea un usuario y lo autentica."""
+        try:
+            unique = f"{uuid.uuid4().hex[:6]}_{user_index}"
+            email = f'load_{unique}@example.com'
+            password = 'LoadTest123!'
+            
+            # Registrar usuario
+            local_session = requests.Session()
+            headers = {}
+            start_time = time.time()
+            response = local_session.post(
+                api_url(ctx.base_url, '/api/registro'),
+                json={'username': f'load_{unique}', 'email': email, 'password': password},
+                timeout=20,
+                headers=headers
+            )
+            
+            # Login
+            response = local_session.post(
+                api_url(ctx.base_url, '/api/login'),
+                json={'email': email, 'password': password},
+                timeout=20,
+                headers=headers
+            )
+            elapsed = time.time() - start_time
+            
+            if response.status_code == 200:
+                try:
+                    payload = response.json()
+                    token = payload.get('token')
+                    return (token is not None, elapsed)
+                except ValueError:
+                    return (False, elapsed)
+            return (False, elapsed)
+        except Exception as e:
+            print(f'   Error en usuario {user_index}: {e}')
+            return (False, 0)
+    
+    # Ejecutar registros y logins concurrentes
+    with ThreadPoolExecutor(max_workers=10) as executor:
+        futures = {executor.submit(create_and_login_user, i): i for i in range(num_users)}
+        
+        for future in as_completed(futures):
+            user_index = futures[future]
+            try:
+                success, elapsed = future.result()
+                if success:
+                    user_tokens.append(True)
+                    login_times.append(elapsed)
+                else:
+                    failed_logins += 1
+            except Exception as e:
+                print(f'   Exception en usuario {user_index}: {e}')
+                failed_logins += 1
+    
+    successful_users = len(user_tokens)
+    assert_true(successful_users >= 25, f'Solo {successful_users} usuarios se conectaron exitosamente (minimo requerido: 25)')
+    
+    avg_login_time = sum(login_times) / len(login_times) if login_times else 0
+    print(f'   {successful_users}/{num_users} usuarios conectados exitosamente')
+    print(f'   Tiempo promedio de login: {avg_login_time:.2f}s')
+    if failed_logins > 0:
+        print(f'   Fallos: {failed_logins}')
+
+
 def destructive_delete_and_restore(ctx: SmokeContext) -> None:
     assert_true(ctx.movie_id is not None, 'No hay movie_id para borrar')
     assert_true(ctx.series_id is not None, 'No hay series_id para borrar')
@@ -281,6 +376,8 @@ def run_smoke(ctx: SmokeContext, destructive: bool) -> None:
         ('reviews de peliculas y series', lambda: check_reviews(ctx)),
         ('permisos de admin', lambda: check_permissions(ctx)),
         ('sincronizacion de peliculas y series', lambda: check_sync(ctx)),
+        ('rendimiento de busquedas de peliculas', lambda: check_movie_search_performance(ctx)),
+        ('carga de 25+ usuarios concurrentes', lambda: check_concurrent_users_load(ctx)),
     ]
 
     for title, fn in steps:

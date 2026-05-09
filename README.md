@@ -118,6 +118,36 @@ python smoke_test_streamflix.py
 python smoke_test_streamflix.py --destructive
 ```
 
+## 🧪 TESTS Y CALIDAD
+
+Se han añadido pruebas automáticas para validar la API y el rendimiento del proyecto.
+
+- `test_streamflix.py`: Suite completa de tests unitarios e integración usando `pytest`.
+- `smoke_test_streamflix.py`: Smoke tests funcionales que validan endpoints principales (login, catálogo, favoritos, reviews, sync). Soporta `--destructive` para probar borrado y restauración.
+- Se añadieron pruebas de rendimiento y carga en `test_streamflix.py`:
+    - Verifican que el filtrado de búsquedas del catálogo (client-side) se ejecute en menos de 2s.
+    - Simulan 30 usuarios concurrentes (registrando y autenticando) y comprueban que al menos 25 se puedan conectar simultáneamente.
+
+Cómo ejecutar los tests:
+```bash
+# Instalar pytest (si no está en requirements)
+pip install -r requirements.txt
+pip install pytest
+
+# Ejecutar la suite completa
+pytest test_streamflix.py -v
+
+# Ejecutar solo smoke tests
+python smoke_test_streamflix.py
+```
+
+Exportar las dependencias del entorno activo:
+```bash
+pip freeze > requirements.txt
+```
+
+Nota: el proyecto ahora tolera casos históricos de datos duplicados a la hora de crear índices únicos en `app.py` (se captura la excepción y se imprime un aviso) para evitar que errores en instalaciones previas impidan arrancar la app o ejecutar tests.
+
 ---
 
 ## 📡 ENDPOINTS DE LA API

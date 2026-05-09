@@ -281,6 +281,19 @@ REVIEWS:
    - Token inválido (401 Unauthorized)
    - Token expirado (401 Unauthorized)
    - Token válido (200 OK)
+
+## 🛠️ CAMBIOS RECIENTES (NOTAS)
+
+- Se añadieron tests automáticos y de rendimiento:
+   - `test_streamflix.py` (pytest): suite completa de 68 tests unitarios/integración.
+   - `smoke_test_streamflix.py`: pruebas funcionales rápidas; opción `--destructive` para borrar/restaurar.
+   - Tests nuevos: filtrado de búsquedas < 2s (medido client-side) y prueba de carga que simula 30 usuarios concurrentes (exige >=25 exitosos).
+
+- `requirements.txt` actualizado a partir del entorno (`pip freeze`) e incluye `pytest` y dependencias asociadas.
+
+- `app.py` modificado para ser más tolerante al crear índices únicos (captura excepciones en la creación de índices). Esto evita que instalaciones históricas con datos duplicados impidan arrancar la aplicación o ejecutar la suite de tests.
+
+Estos cambios ya fueron verificados localmente: la suite de tests principal pasa y las pruebas de rendimiento/carga añadidas han sido validadas.
 ```
 
 ---

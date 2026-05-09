@@ -17,6 +17,8 @@ GET /api/peliculas
 ```
 **Respuesta**: Array de películas sincronizadas desde TMDB
 
+Nota: No existe un endpoint `/api/buscar/peliculas` en el backend; la funcionalidad de búsqueda del proyecto es client-side (filtrado en `app.js` sobre los resultados de `/api/peliculas`).
+
 ### Obtener película por ID
 ```
 GET /api/peliculas/<id>

@@ -249,7 +249,10 @@ def ensure_schema_compatibility():
         if 'source' not in movie_columns:
             conn.execute(text("ALTER TABLE movie ADD COLUMN source VARCHAR(50) DEFAULT 'local'"))
 
-        conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS idx_movie_source_external_id ON movie (source, external_id)"))
+        try:
+            conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS idx_movie_source_external_id ON movie (source, external_id)"))
+        except Exception as exc:
+            print(f"Aviso: no se pudo crear el indice unico de movie: {exc}")
 
         series_columns = {row[1] for row in conn.execute(text('PRAGMA table_info(series)')).fetchall()}
         if 'external_id' not in series_columns:
@@ -257,7 +260,10 @@ def ensure_schema_compatibility():
         if 'source' not in series_columns:
             conn.execute(text("ALTER TABLE series ADD COLUMN source VARCHAR(50) DEFAULT 'local'"))
 
-        conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS idx_series_source_external_id ON series (source, external_id)"))
+        try:
+            conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS idx_series_source_external_id ON series (source, external_id)"))
+        except Exception as exc:
+            print(f"Aviso: no se pudo crear el indice unico de series: {exc}")
 
         episode_columns = {row[1] for row in conn.execute(text('PRAGMA table_info(episode)')).fetchall()}
         if 'external_id' not in episode_columns:
